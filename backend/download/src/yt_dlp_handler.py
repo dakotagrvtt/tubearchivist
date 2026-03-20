@@ -24,6 +24,7 @@ from common.src.ta_redis import RedisQueue
 from common.src.urlparser import ParsedURLType
 from download.src.queue import PendingList
 from download.src.yt_dlp_base import YtWrap
+from fork_features.registry import get_download_hooks
 from playlist.src.index import YoutubePlaylist
 from video.src.comments import CommentList
 from video.src.constants import VideoTypeEnum
@@ -204,15 +205,39 @@ class VideoDownloader(DownloaderBase):
         if overwrites and overwrites.get("download_format"):
             obs["format"] = overwrites.get("download_format")
 
+        # Keep output container mp4-only regardless of channel/global values.
+        obs["merge_output_format"] = "mp4"
+        obs["outtmpl"] = self.CACHE_DIR + "/download/%(id)s.mp4"
+
     def _dl_single_vid(self, youtube_id: str, channel_id: str) -> bool:
-        """download single video"""
+        """download one video, running fork-feature hooks around the download"""
         obs = self.obs.copy()
         self._set_overwrites(obs, channel_id)
         dl_cache = os.path.join(self.CACHE_DIR, "download")
 
+        # Run pre-download hooks (e.g. multi-audio format selection).
+        hooks = get_download_hooks()
+        hook_contexts = []
+        for hook in hooks:
+            ctx = hook.pre_download(
+                obs,
+                youtube_id,
+                channel_id,
+                self.config,
+                self.channel_overwrites,
+            )
+            hook_contexts.append(ctx)
+
         success, message = YtWrap(obs, self.config).download(youtube_id)
         if not success:
             self._handle_error(youtube_id, message)
+
+        # Run post-download hooks regardless of success so they can clean up.
+        for hook, ctx in zip(hooks, hook_contexts):
+            hook.post_download(ctx, youtube_id, dl_cache, success)
+
+        if not success:
+            return False
 
         if self.obs["writethumbnail"]:
             # webp files don't get cleaned up automatically

@@ -3,6 +3,7 @@
 # pylint: disable=abstract-method
 
 from common.serializers import ValidateUnknownFieldsMixin
+from fork_features.registry import get_app_serializer_fields as _fork_app_fields
 from rest_framework import serializers
 
 
@@ -60,6 +61,14 @@ class AppConfigDownloadsSerializer(
     extractor_lang = serializers.CharField(allow_null=True)
     integrate_ryd = serializers.BooleanField()
     integrate_sponsorblock = serializers.BooleanField()
+
+    def get_fields(self):
+        """Merge in fork-feature app-settings fields at runtime."""
+        fields = super().get_fields()
+        for name, field in _fork_app_fields().items():
+            if name not in fields:
+                fields[name] = field
+        return fields
 
 
 class AppConfigAppSerializer(

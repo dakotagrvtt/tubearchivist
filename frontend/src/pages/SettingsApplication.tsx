@@ -21,6 +21,7 @@ import deletePoToken from '../api/actions/deletePoToken';
 import updatePoToken from '../api/actions/updatePoToken';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import MembershipAppsettings from '../components/MembershipAppsettings';
+import { APP_SETTINGS_SECTIONS } from '../fork_features/registry';
 
 type SettingsApplicationReponses = {
   snapshots?: SnapshotListType;
@@ -534,17 +535,21 @@ const SettingsApplication = () => {
                   updateCallback={handleUpdateConfig}
                 />
               </div>
+
+              {/* Fork feature sections (e.g. multi-audio settings) */}
+              {APP_SETTINGS_SECTIONS.map((Section, i) => (
+                <Section
+                  key={i}
+                  appSettingsConfig={appSettingsConfig}
+                  onRefresh={() => setRefresh(true)}
+                />
+              ))}
             </div>
             <div className="info-box-item">
               <h2 id="subtitles">Subtitles</h2>
               {userConfig.show_help_text && (
                 <div className="help-text">
-                  <p>Additional subtitle options show once you choose a language.</p>
                   <ul>
-                    <li>
-                      Choose which subtitles to download, add comma separated language codes, e.g.{' '}
-                      <span className="settings-current">en, de, zh-Hans</span>
-                    </li>
                     <li>
                       Enabling auto generated subtitles adds fallback to less accurate auto
                       generated subtitles from YT.

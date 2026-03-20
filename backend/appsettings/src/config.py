@@ -13,6 +13,7 @@ from appsettings.src.snapshot import ElasticSnapshot
 from common.src.es_connect import ElasticWrap
 from common.src.ta_redis import RedisArchivist
 from django.conf import settings
+from fork_features.registry import get_config_defaults as _fork_config_defaults
 
 
 class SubscriptionsConfigType(TypedDict):
@@ -160,10 +161,19 @@ class AppConfig:
         """sync defaults at startup, needs to be called with __new__"""
         return ElasticWrap(self.ES_PATH).post(self.CONFIG_DEFAULTS)
 
+    def _effective_defaults(self) -> AppConfigType:
+        """Return CONFIG_DEFAULTS merged with fork-feature download defaults."""
+        import copy
+
+        merged = copy.deepcopy(self.CONFIG_DEFAULTS)
+        merged["downloads"].update(_fork_config_defaults())  # type: ignore
+        return merged
+
     def add_new_defaults(self) -> list[str]:
         """add new default config values to ES, called at startup"""
         updated = []
-        for key, value in self.CONFIG_DEFAULTS.items():
+        effective = self._effective_defaults()
+        for key, value in effective.items():
             if key not in self.config:
                 # complete new key
                 self.update_config({key: value})
@@ -178,6 +188,35 @@ class AppConfig:
                     updated.append(str(to_update))
 
         return updated
+
+    def clear_old_keys(self) -> list[str]:
+        """clear old unused keys"""
+        cleared = []
+        effective = self._effective_defaults()
+        for key, value in self.config.items():
+            if key not in effective:
+                # complete key removed
+                self.config.pop(key)
+                cleared.append(str({key: value}))
+                continue
+
+            expected_keys = set(
+                effective[key].keys()  # type: ignore
+            )
+            is_keys = set(self.config[key].keys())
+
+            for to_delete in is_keys - expected_keys:
+                self.config[key].pop(to_delete)
+                cleared.append(f"{key}.{to_delete}")
+
+        if not cleared:
+            return []
+
+        response, status_code = ElasticWrap(self.ES_PATH).post(self.config)
+        if not status_code == 200:
+            print(response)
+
+        return cleared
 
 
 class ReleaseVersion:

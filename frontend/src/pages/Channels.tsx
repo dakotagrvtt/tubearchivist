@@ -26,6 +26,10 @@ type ChannelOverwritesType = {
   subscriptions_channel_size: number | null;
   subscriptions_live_channel_size: number | null;
   subscriptions_shorts_channel_size: number | null;
+  // fork_features: audio_tracks
+  audio_multistreams?: boolean | null;
+  audio_languages?: string | null;
+  [key: string]: unknown;
 };
 
 export type ChannelType = {

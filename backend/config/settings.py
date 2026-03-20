@@ -70,6 +70,8 @@ INSTALLED_APPS = [
     "stats",
     "user",
     "config",
+    # Fork-only features (not part of upstream TubeArchivist)
+    "fork_features",
 ]
 
 MIDDLEWARE = [
