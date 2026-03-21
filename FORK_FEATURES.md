@@ -10,6 +10,8 @@ This document explains how custom features that diverge from upstream
 3. **Features can be toggled off** — removing the backend feature import and frontend registry
    entry disables the feature without deleting its code.
 
+For branch and release workflow, see [BRANCHING.md](./BRANCHING.md).
+
 ---
 
 ## Directory Layout
@@ -264,6 +266,9 @@ That's it — the upstream pages pick up the new sections automatically.
 ---
 
 ## Staying In Sync With Upstream
+
+> For the full branch policy and current branch meanings, see
+> [BRANCHING.md](./BRANCHING.md).
 
 ### Branch strategy
 
