@@ -2,6 +2,8 @@
 
 # pylint: disable=abstract-method
 
+import copy
+
 from common.serializers import ValidateUnknownFieldsMixin
 from fork_features.registry import get_app_serializer_fields as _fork_app_fields
 from rest_framework import serializers
@@ -67,7 +69,7 @@ class AppConfigDownloadsSerializer(
         fields = super().get_fields()
         for name, field in _fork_app_fields().items():
             if name not in fields:
-                fields[name] = field
+                fields[name] = copy.deepcopy(field)
         return fields
 
 

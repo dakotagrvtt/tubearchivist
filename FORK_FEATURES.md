@@ -7,8 +7,8 @@ This document explains how custom features that diverge from upstream
    into upstream files with the smallest possible diff.
 2. **New features are easy to add** — drop a new module, call `register()` in the registry; no
    surgery on upstream page components required.
-3. **Features can be toggled off** — removing or commenting out a single `register()` call in a
-   feature's `__init__.py` disables it everywhere.
+3. **Features can be toggled off** — removing the backend feature import and frontend registry
+   entry disables the feature without deleting its code.
 
 ---
 
@@ -17,12 +17,13 @@ This document explains how custom features that diverge from upstream
 ```
 backend/
 └── fork_features/               ← Python package, isolated from upstream apps
-    ├── __init__.py              ← Triggers feature auto-registration
+    ├── __init__.py              ← Package marker / documentation
     ├── apps.py                  ← Django AppConfig (listed in INSTALLED_APPS)
     ├── registry.py              ← Central registry: register() + accessor functions
     └── audio_tracks/            ← "Multi-audio language download" feature
         ├── __init__.py          ← Calls registry.register() with feature hooks
         ├── languages.py         ← ISO language helpers
+        ├── media_streams.py     ← Audio stream metadata enrichment for player UI
         ├── ffmpeg_merge.py      ← Post-download ffmpeg muxing logic
         └── downloader.py        ← DownloadHook implementation (pre/post download)
 
@@ -30,8 +31,10 @@ frontend/
 └── src/fork_features/           ← TypeScript/React, isolated from upstream components
     ├── registry.ts              ← Exports APP_SETTINGS_SECTIONS, CHANNEL_SETTINGS_SECTIONS
     └── audioTracks/
+        ├── AudioLanguageSelector.tsx
         ├── ApplicationSettingsSection.tsx
         └── ChannelSettingsSection.tsx
+        └── streamLabels.ts      ← Audio stream label formatter for Video page
 ```
 
 ---
@@ -52,6 +55,7 @@ register(
     channel_serializer_fields={"audio_multistreams": ..., "audio_languages": ...},
     channel_overwrite_keys=["audio_multistreams", "audio_languages"],
     download_hook=AudioTracksDownloadHook(),
+    media_stream_enricher=AudioTracksMediaStreamEnricher(),
 )
 ```
 
@@ -64,8 +68,10 @@ The registry exposes **accessor functions** that upstream integration points cal
 | `get_channel_serializer_fields()` | `channel/serializers.py` → `ChannelOverwriteSerializer.get_fields()` | Adds DRF fields to the channel overwrite serializer |
 | `get_channel_overwrite_keys()` | `channel/src/index.py` → `YoutubeChannel.OVERWRITES` | Adds keys to the channel overwrite index list |
 | `get_download_hooks()` | `download/src/yt_dlp_handler.py` → `_dl_single_vid()` | Returns `DownloadHook` objects called before/after each download |
+| `get_media_stream_enrichers()` | `video/src/media_streams.py` → `_extract_audio_metadata()` | Enriches extracted stream metadata for fork-specific UI |
 
-Each upstream file contains a single import and a small integration call — nothing else changes.
+Each upstream file contains a small, explicit integration point. The goal is to keep upstream
+diffs narrow and predictable, even if a given file needs slightly more than 1-3 added lines.
 
 ### Backend – Download Hooks
 
@@ -84,6 +90,21 @@ class DownloadHook(Protocol):
 
 Hooks are called in registration order. `post_download` is called regardless of success so hooks
 can clean up resources.
+
+### Backend – Media Stream Enrichers
+
+Media stream enrichers run when TubeArchivist extracts ffprobe stream metadata for a video:
+
+```python
+class MediaStreamEnricher(Protocol):
+    def enrich_stream(self, stream, metadata) -> dict:
+        """Return enriched metadata for one ffprobe stream."""
+        ...
+```
+
+Use this when a fork feature needs extra UI-facing metadata for a media stream (for example,
+audio language labels or cleaned track titles) without hardcoding that logic into the upstream
+extractor.
 
 ### Frontend – Component Registry (`frontend/src/fork_features/registry.ts`)
 
@@ -104,11 +125,15 @@ import { APP_SETTINGS_SECTIONS } from '../fork_features/registry';
 ))}
 ```
 
+The frontend registry can also expose small fork-only formatter hooks for
+upstream pages, such as stream-label formatters used by `Video.tsx`.
+
 ---
 
 ## Upstream Files Touched (Minimal Integration Points)
 
-These are the **only** upstream files modified by the fork framework. Each has 1-3 lines added:
+These are the upstream files intentionally touched by the fork framework. They should remain small,
+well-commented integration points:
 
 | File | What was added |
 |---|---|
@@ -118,8 +143,14 @@ These are the **only** upstream files modified by the fork framework. Each has 1
 | `backend/channel/serializers.py` | Import `get_channel_serializer_fields` + `get_fields()` override |
 | `backend/channel/src/index.py` | Import `get_channel_overwrite_keys` + extends `OVERWRITES` list |
 | `backend/download/src/yt_dlp_handler.py` | Import `get_download_hooks` + pre/post hook calls in `_dl_single_vid()` |
+| `backend/video/src/media_streams.py` | Import `get_media_stream_enrichers` + enrichment hook call in audio stream extraction |
+| `backend/video/serializers.py` | Optional stream metadata fields for enriched audio stream labels |
+| `frontend/src/api/loader/loadAppsettingsConfig.ts` | Fork-only config fields added to the app settings TypeScript type |
+| `frontend/src/pages/Channels.tsx` | Fork-only channel overwrite fields added to the shared channel type |
+| `frontend/src/pages/Home.tsx` | Optional stream metadata fields added to the shared `StreamType` |
 | `frontend/src/pages/SettingsApplication.tsx` | Import `APP_SETTINGS_SECTIONS` + `.map()` rendering block |
 | `frontend/src/pages/ChannelAbout.tsx` | Import `CHANNEL_SETTINGS_SECTIONS` + `loadAppsettingsConfig` + `.map()` rendering block |
+| `frontend/src/pages/Video.tsx` | Stream label formatter hook used to render enriched audio stream labels |
 
 ---
 
@@ -161,25 +192,36 @@ register(
     # channel_serializer_fields={...},       # if needed
     # channel_overwrite_keys=["my_setting"], # if needed
     download_hook=MyDownloadHook(),           # if needed
+    # media_stream_enricher=MyStreamEnricher(),
 )
 ```
 
-### 3 – Import in `backend/fork_features/__init__.py`
+### 3 – Import in `backend/fork_features/apps.py`
 
-Add your module to the imports list:
+Add your module to `ForkFeaturesConfig.ready()` so it self-registers at Django startup:
 
 ```python
-from fork_features import audio_tracks   # existing
-from fork_features import my_feature     # new
+class ForkFeaturesConfig(AppConfig):
+    ...
+
+    def ready(self) -> None:
+        import fork_features.audio_tracks  # noqa: F401
+        import fork_features.my_feature    # noqa: F401
 ```
 
 ### 4 – Create frontend components (if the feature has UI)
 
 ```
 frontend/src/fork_features/myFeature/
+├── MyFeatureControl.tsx          (optional feature-local helper component)
 ├── ApplicationSettingsSection.tsx   (if it needs global settings)
 └── ChannelSettingsSection.tsx       (if it needs per-channel settings)
 ```
+
+If a feature needs to customize display on an upstream page without owning a
+full section, prefer a small formatter/helper exported from `src/fork_features`
+and consumed through a registry hook rather than embedding fork logic directly
+in the upstream page component.
 
 Each component receives standardised props:
 
@@ -251,8 +293,9 @@ git push origin fork/v0.6.0
 
 ### Where conflicts can occur
 
-Conflicts will almost always be limited to the small hook lines in the 8 upstream files listed
-above. The bulk of your feature code in `fork_features/` will have **no conflicts at all**.
+Conflicts will almost always be limited to the small hook lines in the integration files listed
+above. The bulk of your feature code in `backend/fork_features/` and
+`frontend/src/fork_features/` should have **no conflicts at all**.
 
 For each conflict, the resolution is always the same pattern: keep whatever upstream changed,
 then re-add the 1-3 fork hook lines.
@@ -272,6 +315,7 @@ final mp4 file.
 |---|---|
 | `__init__.py` | Calls `register()` with config defaults, serializer fields, and download hook |
 | `languages.py` | BCP-47 ↔ yt-dlp language code mapping |
+| `media_streams.py` | Enriches extracted audio stream metadata for player labels |
 | `ffmpeg_merge.py` | Merges extra audio tracks into the mp4 after download |
 | `downloader.py` | `AudioTracksDownloadHook` – injects multi-audio yt-dlp options pre-download, runs ffmpeg merge post-download |
 
@@ -279,8 +323,10 @@ final mp4 file.
 
 | File | Description |
 |---|---|
+| `AudioLanguageSelector.tsx` | Feature-local language input used only by audio track settings |
 | `ApplicationSettingsSection.tsx` | Toggle + language picker on the Application Settings page |
 | `ChannelSettingsSection.tsx` | Per-channel override toggle + language picker on Channel About |
+| `streamLabels.ts` | Feature-local formatter for audio stream labels on the Video page |
 
 **Config keys** (added to `downloads` section):
 - `audio_multistreams` (bool) – Enable/disable multi-audio track downloading
@@ -296,7 +342,7 @@ are out of scope for the upstream project.
 
 To disable a feature without removing code:
 
-1. **Backend**: Comment out or remove the import in `backend/fork_features/__init__.py`
+1. **Backend**: Comment out or remove the feature import in `backend/fork_features/apps.py`
 2. **Frontend**: Comment out or remove the component from the arrays in
    `frontend/src/fork_features/registry.ts`
 

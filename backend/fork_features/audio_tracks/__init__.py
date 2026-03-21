@@ -13,6 +13,9 @@ loaded automatically when Django starts as long as
 from rest_framework import serializers
 
 from fork_features.audio_tracks.downloader import AudioTracksDownloadHook
+from fork_features.audio_tracks.media_streams import (
+    AudioTracksMediaStreamEnricher,
+)
 from fork_features.registry import register
 
 register(
@@ -22,8 +25,12 @@ register(
         "audio_languages": None,
     },
     app_serializer_fields={
-        "audio_multistreams": serializers.BooleanField(),
-        "audio_languages": serializers.CharField(allow_null=True),
+        "audio_multistreams": serializers.BooleanField(
+            required=False
+        ),
+        "audio_languages": serializers.CharField(
+            required=False, allow_null=True
+        ),
     },
     channel_serializer_fields={
         "audio_multistreams": serializers.BooleanField(
@@ -35,4 +42,5 @@ register(
     },
     channel_overwrite_keys=["audio_multistreams", "audio_languages"],
     download_hook=AudioTracksDownloadHook(),
+    media_stream_enricher=AudioTracksMediaStreamEnricher(),
 )

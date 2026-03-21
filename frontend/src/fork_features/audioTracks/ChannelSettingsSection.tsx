@@ -11,7 +11,7 @@
 import { useState, useEffect } from 'react';
 import updateChannelOverwrites from '../../api/actions/updateChannelOverwrite';
 import ToggleConfig from '../../components/ToggleConfig';
-import AudioLanguageSelector from '../../components/AudioLanguageSelector';
+import AudioLanguageSelector from './AudioLanguageSelector';
 import { ChannelSettingsSectionProps } from '../registry';
 
 const AudioTracksChannelSection = ({
@@ -81,11 +81,6 @@ const AudioTracksChannelSection = ({
             <p>Audio Languages</p>
           </div>
           <AudioLanguageSelector
-            key={[
-              'audio_languages',
-              audioLanguages ?? '',
-              channel.channel_overwrites?.audio_languages ?? '',
-            ].join(':')}
             name="audio_languages"
             value={audioLanguages}
             oldValue={channel.channel_overwrites?.audio_languages ?? null}

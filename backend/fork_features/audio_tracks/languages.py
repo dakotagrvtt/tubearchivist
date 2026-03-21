@@ -187,7 +187,13 @@ def resolve_hls_audio_formats(
 def build_main_format(
     formats: list[dict], dash_lang_formats: dict[str, str]
 ) -> str | None:
-    """Build the yt-dlp ``--format`` string for DASH video + audio tracks."""
+    """Build the yt-dlp ``--format`` string for requested DASH audio tracks.
+
+    This matches the late pre-branch implementation: select the best
+    video-only stream and append the explicitly selected DASH language audio
+    streams. HLS-only languages are still handled separately via the fallback
+    merge path.
+    """
     video_only = [
         f
         for f in formats

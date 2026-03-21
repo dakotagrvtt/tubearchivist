@@ -43,12 +43,28 @@ export type ChannelSettingsSectionProps = {
   onRefresh: () => void;
 };
 
+export type VideoStreamType = {
+  type: string;
+  index: number;
+  codec: string;
+  width?: number;
+  height?: number;
+  bitrate: number;
+  language?: string | null;
+  title?: string | null;
+  channels?: number | null;
+  channel_layout?: string | null;
+};
+
+export type VideoStreamFormatter = (stream: VideoStreamType) => string | null;
+
 // ---------------------------------------------------------------------------
 // Registry lists — import your feature section components here
 // ---------------------------------------------------------------------------
 
 import AudioTracksAppSection from './audioTracks/ApplicationSettingsSection';
 import AudioTracksChannelSection from './audioTracks/ChannelSettingsSection';
+import { formatAudioTrackStreamLabel } from './audioTracks/streamLabels';
 
 /**
  * Fork-feature sections rendered inside the Download Format settings box
@@ -65,3 +81,19 @@ export const APP_SETTINGS_SECTIONS: ComponentType<AppSettingsSectionProps>[] = [
 export const CHANNEL_SETTINGS_SECTIONS: ComponentType<ChannelSettingsSectionProps>[] = [
   AudioTracksChannelSection,
 ];
+
+/**
+ * Fork-feature formatters for stream labels on the Video page.
+ */
+export const VIDEO_STREAM_FORMATTERS: VideoStreamFormatter[] = [formatAudioTrackStreamLabel];
+
+export const formatVideoStreamLabel = (stream: VideoStreamType): string | null => {
+  for (const formatter of VIDEO_STREAM_FORMATTERS) {
+    const label = formatter(stream);
+    if (label) {
+      return label;
+    }
+  }
+
+  return null;
+};

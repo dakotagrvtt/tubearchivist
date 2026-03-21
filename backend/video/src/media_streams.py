@@ -4,6 +4,8 @@ import json
 import subprocess
 from os import stat
 
+from fork_features.registry import get_media_stream_enrichers
+
 
 class MediaStreamExtractor:
     """extract stream metadata"""
@@ -65,14 +67,17 @@ class MediaStreamExtractor:
 
     def _extract_audio_metadata(self, stream) -> None:
         """extract audio metadata"""
-        self.metadata.append(
-            {
-                "bitrate": int(stream.get("bit_rate", 0)),
-                "codec": stream.get("codec_name", "undefined"),
-                "index": stream["index"],
-                "type": "audio",
-            }
-        )
+        metadata = {
+            "bitrate": int(stream.get("bit_rate", 0)),
+            "codec": stream.get("codec_name", "undefined"),
+            "index": stream["index"],
+            "type": "audio",
+        }
+
+        for enricher in get_media_stream_enrichers():
+            metadata = enricher.enrich_stream(stream, metadata)
+
+        self.metadata.append(metadata)
 
     def get_file_size(self) -> int:
         """get filesize in bytes"""

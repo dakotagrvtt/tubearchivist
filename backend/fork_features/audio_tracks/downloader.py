@@ -74,8 +74,8 @@ class AudioTracksDownloadHook:
                 main_fmt = build_main_format(available_formats, dash_fmt)
 
                 if main_fmt:
-                    selected_audio_count = len(dash_fmt) + len(hls_fmt)
                     obs["format"] = main_fmt
+                    selected_audio_count = len(dash_fmt) + len(hls_fmt)
                     if selected_audio_count > 1:
                         obs["audio_multistreams"] = True
                     print(f"{youtube_id}: main format: {main_fmt}")

@@ -7,6 +7,7 @@ Provides a simple registry that fork features use to contribute:
   - Channel overwrite serializer fields (for ChannelOverwriteSerializer)
   - Channel overwrite index keys (for YoutubeChannel OVERWRITES list)
   - Download hooks (called before/after each video download)
+  - Media stream enrichers (augment ffprobe stream metadata for UI display)
 
 Usage
 -----
@@ -29,6 +30,7 @@ Example (see FORK_FEATURES.md for a full walkthrough)::
         channel_serializer_fields={"audio_multistreams": ..., "audio_languages": ...},
         channel_overwrite_keys=["audio_multistreams", "audio_languages"],
         download_hook=MyFeatureDownloadHook(),
+        media_stream_enricher=MyMediaStreamEnricher(),
     )
 """
 
@@ -70,19 +72,21 @@ class DownloadHook(Protocol):
         """
         ...
 
-    def post_download(
-        self,
-        context: dict[str, Any],
-        youtube_id: str,
-        dl_cache: str,
-        success: bool,
-    ) -> None:
-        """Called immediately after yt-dlp returns.
 
-        *context* is the dict returned by ``pre_download``.
-        *dl_cache* is the absolute path to the download cache directory.
-        *success* reflects whether yt-dlp reported a successful download.
-        """
+class MediaStreamEnricher(Protocol):
+    """Protocol for augmenting extracted media stream metadata.
+
+    Enrichers are called for each parsed ffprobe stream after the core code
+    has assembled the base metadata dict. They may mutate and/or return the
+    metadata dict with extra keys used by fork-specific UI.
+    """
+
+    def enrich_stream(
+        self,
+        stream: dict[str, Any],
+        metadata: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Return enriched metadata for a single stream."""
         ...
 
 
@@ -99,6 +103,7 @@ class _FeatureEntry:
     channel_serializer_fields: dict[str, Any] = field(default_factory=dict)
     channel_overwrite_keys: list[str] = field(default_factory=list)
     download_hook: DownloadHook | None = None
+    media_stream_enricher: MediaStreamEnricher | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +121,7 @@ def register(
     channel_serializer_fields: dict[str, "drf_serializers.Field"] | None = None,
     channel_overwrite_keys: list[str] | None = None,
     download_hook: DownloadHook | None = None,
+    media_stream_enricher: MediaStreamEnricher | None = None,
 ) -> None:
     """Register a fork feature.
 
@@ -136,6 +142,9 @@ def register(
     download_hook:
         Object implementing :class:`DownloadHook` that is called around
         each video download.
+    media_stream_enricher:
+        Object implementing :class:`MediaStreamEnricher` that can enrich
+        ffprobe-derived stream metadata for display in the UI.
     """
     for existing in _registry:
         if existing.feature_id == feature_id:
@@ -151,6 +160,7 @@ def register(
             channel_serializer_fields=channel_serializer_fields or {},
             channel_overwrite_keys=list(channel_overwrite_keys or []),
             download_hook=download_hook,
+            media_stream_enricher=media_stream_enricher,
         )
     )
     print(f"[fork_features] registered feature: {feature_id}")
@@ -201,4 +211,13 @@ def get_download_hooks() -> list[DownloadHook]:
         entry.download_hook
         for entry in _registry
         if entry.download_hook is not None
+    ]
+
+
+def get_media_stream_enrichers() -> list[MediaStreamEnricher]:
+    """Media stream enrichers from registered features."""
+    return [
+        entry.media_stream_enricher
+        for entry in _registry
+        if entry.media_stream_enricher is not None
     ]

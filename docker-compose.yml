@@ -19,6 +19,7 @@ services:
       - TA_PASSWORD=verysecret              # your initial TA credentials
       - ELASTIC_PASSWORD=verysecret         # set password for Elasticsearch
       - TZ=America/New_York                 # set your time zone
+      - TA_AUTO_UPDATE_YTDLP=release
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
       interval: 2m

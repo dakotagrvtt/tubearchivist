@@ -1,14 +1,12 @@
 /**
  * AudioLanguageSelector – text input for comma-separated language codes.
  *
- * Used by the audio_tracks fork feature to let users specify which audio
- * language tracks to download (e.g. "en, es, ja").
- *
- * Follows the same update/cancel/reset pattern as InputConfig.
+ * Kept inside the audioTracks fork feature so the custom UI stays isolated
+ * from upstream shared components.
  */
 
-import { useState } from 'react';
-import LoadingIndicator from './LoadingIndicator';
+import { useEffect, useState } from 'react';
+import LoadingIndicator from '../../components/LoadingIndicator';
 
 type AudioLanguageSelectorProps = {
   name: string;
@@ -26,6 +24,10 @@ const AudioLanguageSelector = ({
   const [localValue, setLocalValue] = useState<string>(value ?? '');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    setLocalValue(value ?? '');
+  }, [value]);
 
   const normalizedOld = oldValue ?? '';
   const hasChanged = localValue !== normalizedOld;

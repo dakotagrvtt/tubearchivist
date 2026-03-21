@@ -45,6 +45,7 @@ import NotFound from './NotFound';
 import { ApiResponseType } from '../functions/APIClient';
 import VideoThumbnail from '../components/VideoThumbail';
 import { ViewStylesEnum, ViewStylesType } from '../configuration/constants/ViewStyle';
+import { formatVideoStreamLabel } from '../fork_features/registry';
 
 const isInPlaylist = (videoId: string, playlist: PlaylistType) => {
   return playlist.playlist_entries.some(entry => {
@@ -465,10 +466,17 @@ const Video = () => {
 
             {video.streams &&
               video.streams.map(stream => {
+                const streamLabel = formatVideoStreamLabel(stream);
+
                 return (
                   <p key={stream.index}>
                     {capitalizeFirstLetter(stream.type)}: {stream.codec}{' '}
                     {humanFileSize(stream.bitrate, useSiUnits)}/s
+                    {streamLabel && (
+                      <>
+                        <span className="space-carrot">|</span> {streamLabel}
+                      </>
+                    )}
                     {stream.width && (
                       <>
                         <span className="space-carrot">|</span> {stream.width}x{stream.height}

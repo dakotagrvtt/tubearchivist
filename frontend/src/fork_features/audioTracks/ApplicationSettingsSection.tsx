@@ -12,7 +12,7 @@
 import { useState, useEffect } from 'react';
 import updateAppsettingsConfig from '../../api/actions/updateAppsettingsConfig';
 import ToggleConfig from '../../components/ToggleConfig';
-import AudioLanguageSelector from '../../components/AudioLanguageSelector';
+import AudioLanguageSelector from './AudioLanguageSelector';
 import { AppSettingsSectionProps } from '../registry';
 
 const AudioTracksAppSection = ({ appSettingsConfig, onRefresh }: AppSettingsSectionProps) => {
@@ -65,11 +65,6 @@ const AudioTracksAppSection = ({ appSettingsConfig, onRefresh }: AppSettingsSect
             <p>Audio languages</p>
           </div>
           <AudioLanguageSelector
-            key={[
-              'downloads.audio_languages',
-              audioLanguages ?? '',
-              appSettingsConfig.downloads.audio_languages ?? '',
-            ].join(':')}
             name="downloads.audio_languages"
             value={audioLanguages}
             oldValue={appSettingsConfig.downloads.audio_languages}
