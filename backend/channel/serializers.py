@@ -2,7 +2,12 @@
 
 # pylint: disable=abstract-method
 
+import copy
+
 from common.serializers import PaginationSerializer, ValidateUnknownFieldsMixin
+from fork_features.registry import (
+    get_channel_serializer_fields as _fork_channel_fields,
+)
 from rest_framework import serializers
 from video.src.constants import VideoTypeEnum
 
@@ -34,6 +39,14 @@ class ChannelOverwriteSerializer(
     subscriptions_shorts_channel_size = serializers.IntegerField(
         required=False, allow_null=True
     )
+
+    def get_fields(self):
+        """Merge in fork-feature channel-overwrite fields at runtime."""
+        fields = super().get_fields()
+        for name, field in _fork_channel_fields().items():
+            if name not in fields:
+                fields[name] = copy.deepcopy(field)
+        return fields
 
 
 class ChannelSerializer(serializers.Serializer):

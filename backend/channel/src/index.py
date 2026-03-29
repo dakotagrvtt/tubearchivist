@@ -264,6 +264,8 @@ class YoutubeChannel(YouTubeItem):
 
     def set_overwrites(self, overwrites):
         """set per channel overwrites"""
+        from fork_features.registry import get_channel_overwrite_keys
+
         valid_keys = [
             "download_format",
             "download_container",
@@ -275,6 +277,7 @@ class YoutubeChannel(YouTubeItem):
             "subscriptions_channel_size",
             "subscriptions_live_channel_size",
             "subscriptions_shorts_channel_size",
+            *get_channel_overwrite_keys(),
         ]
 
         to_write = self.json_data.get("channel_overwrites", {})

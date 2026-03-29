@@ -2,6 +2,9 @@ import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import ChannelOverview from '../components/ChannelOverview';
 import { ChangeEvent, useEffect, useState } from 'react';
 import loadChannelById, { ChannelResponseType } from '../api/loader/loadChannelById';
+import loadAppsettingsConfig, {
+  AppSettingsConfigType,
+} from '../api/loader/loadAppsettingsConfig';
 import Linkify from '../components/Linkify';
 import deleteChannel from '../api/actions/deleteChannel';
 import Routes from '../configuration/routes/RouteList';
@@ -15,6 +18,7 @@ import InputConfig from '../components/InputConfig';
 import ToggleConfig from '../components/ToggleConfig';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import { ApiResponseType } from '../functions/APIClient';
+import { CHANNEL_SETTINGS_SECTIONS } from '../fork_features/registry';
 
 export type ChannelBaseOutletContextType = {
   currentPage: number;
@@ -45,6 +49,7 @@ const ChannelAbout = () => {
   const [refresh, setRefresh] = useState(true);
 
   const [channelResponse, setChannelResponse] = useState<ApiResponseType<ChannelResponseType>>();
+  const [appSettingsConfig, setAppSettingsConfig] = useState<AppSettingsConfigType | null>(null);
 
   const [downloadFormat, setDownloadFormat] = useState<string | null>(null);
   const [downloadContainer, setDownloadContainer] = useState<'mp4' | 'mkv' | null>(null);
@@ -59,7 +64,6 @@ const ChannelAbout = () => {
   const [pageSizeStreams, setPageSizeStreams] = useState<number | null>(null);
 
   const { data: channelResponseData } = channelResponse ?? {};
-
   const channel = channelResponseData;
 
   useEffect(() => {
@@ -92,6 +96,11 @@ const ChannelAbout = () => {
         setPageSizeStreams(
           channelResponseData?.channel_overwrites?.subscriptions_live_channel_size ?? null,
         );
+
+        const configResponse = await loadAppsettingsConfig();
+        if (configResponse.data) {
+          setAppSettingsConfig(configResponse.data);
+        }
 
         setRefresh(false);
       }
@@ -204,7 +213,6 @@ const ChannelAbout = () => {
                         title={`Reindex Channel ${channel.channel_name}`}
                         onClick={async () => {
                           await queueReindex(channelId, ReindexTypeEnum.channel as ReindexType);
-
                           setReindex(true);
                           setStartNotification(true);
                         }}
@@ -218,7 +226,6 @@ const ChannelAbout = () => {
                             ReindexTypeEnum.channel as ReindexType,
                             true,
                           );
-
                           setReindex(true);
                           setStartNotification(true);
                         }}
@@ -310,6 +317,18 @@ const ChannelAbout = () => {
                   updateCallback={handleUpdateConfig}
                 />
               </div>
+
+              {/* Fork feature sections (e.g. multi-audio settings per channel) */}
+              {appSettingsConfig &&
+                CHANNEL_SETTINGS_SECTIONS.map((Section, i) => (
+                  <Section
+                    key={i}
+                    channel={channel}
+                    appSettingsConfig={appSettingsConfig}
+                    onRefresh={() => setRefresh(true)}
+                  />
+                ))}
+
               <div className="settings-box-wrapper">
                 <div>
                   <p>Download Container</p>

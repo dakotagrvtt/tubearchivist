@@ -44,82 +44,7 @@ import NotFound from './NotFound';
 import { ApiResponseType } from '../functions/APIClient';
 import VideoThumbnail from '../components/VideoThumbail';
 import { ViewStylesEnum, ViewStylesType } from '../configuration/constants/ViewStyle';
-
-const GENERIC_AUDIO_TITLES = new Set([
-  'iso media file produced by google inc.',
-  'soundhandler',
-  'iso media',
-]);
-
-const getLanguageLabel = (language?: string | null): string | null => {
-  if (!language) {
-    return null;
-  }
-
-  const raw = language.trim();
-  if (!raw) {
-    return null;
-  }
-
-  const normalized = raw.split(/[-_]/)[0];
-  const code = raw.toUpperCase();
-
-  try {
-    const DisplayNames = (
-      Intl as unknown as {
-        DisplayNames?: new (
-          locales?: string | string[],
-          options?: Intl.DisplayNamesOptions,
-        ) => Intl.DisplayNames;
-      }
-    ).DisplayNames;
-
-    if (DisplayNames) {
-      const displayName = new DisplayNames([navigator.language || 'en', 'en'], {
-        type: 'language',
-      }).of(normalized);
-
-      if (displayName && displayName.toLowerCase() !== normalized.toLowerCase()) {
-        return `${code} - ${displayName}`;
-      }
-    }
-  } catch {
-    // no-op; fallback to language code
-  }
-
-  return code;
-};
-
-const getUsefulAudioTitle = (
-  title?: string | null,
-  language?: string | null,
-): string | null => {
-  if (!title) {
-    return null;
-  }
-
-  const cleaned = title.trim();
-  if (!cleaned) {
-    return null;
-  }
-
-  const lower = cleaned.toLowerCase();
-  if (GENERIC_AUDIO_TITLES.has(lower)) {
-    return null;
-  }
-
-  const langRaw = language?.trim().toLowerCase();
-  if (langRaw && (lower === langRaw || lower === langRaw.split(/[-_]/)[0])) {
-    return null;
-  }
-
-  // Filter code-like titles (e.g. jpn, en) that duplicate language context.
-  if (/^[a-z]{2,3}$/i.test(cleaned)) {
-    return null;
-  }
-
-  return cleaned;
-};
+import { formatVideoStreamLabel } from '../fork_features/registry';
 
 const isInPlaylist = (videoId: string, playlist: PlaylistType) => {
   return playlist.playlist_entries.some(entry => {
@@ -540,41 +465,18 @@ const Video = () => {
 
             {video.streams &&
               video.streams.map(stream => {
-                const bitrateDisplay =
-                  stream.bitrate > 0
-                    ? `${humanFileSize(stream.bitrate, useSiUnits)}/s`
-                    : null;
-
-                if (stream.type === 'video') {
-                  return (
-                    <p key={stream.index}>
-                      Video: {stream.codec}
-                      {bitrateDisplay && <> {bitrateDisplay}</>}
-                      {stream.width && (
-                        <>
-                          <span className="space-carrot">|</span> {stream.width}x{stream.height}
-                        </>
-                      )}
-                    </p>
-                  );
-                }
-
-                // Audio stream
-                const languageLabel = getLanguageLabel(stream.language);
-                const titleLabel = getUsefulAudioTitle(stream.title, stream.language);
-                const langLabel =
-                  languageLabel && titleLabel
-                    ? `${languageLabel} (${titleLabel})`
-                    : languageLabel || titleLabel || null;
-                const layoutLabel = stream.channel_layout || (stream.channels ? `${stream.channels}ch` : null);
+                const streamLabel = formatVideoStreamLabel(stream);
 
                 return (
                   <p key={stream.index}>
-                    Audio
-                    {langLabel && <> [{langLabel}]</>}:{' '}
-                    {stream.codec}
-                    {bitrateDisplay && <> {bitrateDisplay}</>}
-                    {layoutLabel && (
+                    {capitalizeFirstLetter(stream.type)}: {stream.codec}{' '}
+                    {humanFileSize(stream.bitrate, useSiUnits)}/s
+                    {streamLabel && (
+                      <>
+                        <span className="space-carrot">|</span> {streamLabel}
+                      </>
+                    )}
+                    {stream.width && (
                       <>
                         <span className="space-carrot">|</span> {layoutLabel}
                       </>

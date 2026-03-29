@@ -25,6 +25,7 @@ from common.src.ta_redis import RedisQueue
 from common.src.urlparser import ParsedURLType
 from download.src.queue import PendingList
 from download.src.yt_dlp_base import YtWrap
+from fork_features.registry import get_download_hooks
 from playlist.src.index import YoutubePlaylist
 from video.src.comments import CommentList
 from video.src.constants import VideoTypeEnum
@@ -489,50 +490,32 @@ class VideoDownloader(DownloaderBase):
                 langs.append(lang)
         return langs
 
+        # Keep output container mp4-only regardless of channel/global values.
+        obs["merge_output_format"] = "mp4"
+        obs["outtmpl"] = self.CACHE_DIR + "/download/%(id)s.mp4"
+
+        # Keep output container mp4-only regardless of channel/global values.
+        obs["merge_output_format"] = "mp4"
+        obs["outtmpl"] = self.CACHE_DIR + "/download/%(id)s.mp4"
+
     def _dl_single_vid(self, youtube_id: str, channel_id: str) -> bool:
-        """download single video, with optional multi-language audio merging"""
+        """download one video, running fork-feature hooks around the download"""
         obs = self.obs.copy()
         self._set_overwrites(obs, channel_id)
         dl_cache = os.path.join(self.CACHE_DIR, "download")
 
-        languages = self._get_audio_languages(channel_id)
-        hls_formats: dict[str, str] = {}  # lang -> format_id for HLS post-process
-        selected_audio_count = 0
-
-        if not languages and self._is_audio_multistream_enabled(channel_id):
-            # audio_multistream is on but no explicit language list – auto-discover
-            print(f"{youtube_id}: audio_multistream enabled, auto-discovering languages")
-            formats = self._get_formats(youtube_id)
-            if formats:
-                languages = self._discover_audio_languages(formats)
-                print(f"{youtube_id}: discovered audio languages: {languages}")
-        else:
-            formats = None  # will be fetched below if needed
-
-        if languages:
-            print(f"{youtube_id}: applying audio languages {languages}")
-            if formats is None:
-                formats = self._get_formats(youtube_id)
-            if formats:
-                dash_fmt, hls_formats = self._resolve_audio_formats(
-                    formats, languages
-                )
-                selected_audio_count = len(dash_fmt) + len(hls_formats)
-                main_fmt = self._build_main_format(formats, dash_fmt)
-                if main_fmt:
-                    obs["format"] = main_fmt
-                    if len(dash_fmt) > 1:
-                        obs["audio_multistreams"] = True
-                    # Only force MKV when multiple audio tracks are actually selected.
-                    if selected_audio_count > 1:
-                        obs["merge_output_format"] = "mkv"
-                        obs["outtmpl"] = self.CACHE_DIR + "/download/%(id)s.mkv"
-                    print(f"{youtube_id}: main format: {main_fmt}")
-                elif hls_formats and selected_audio_count > 1:
-                    # all selected langs are HLS-only and we have >1 tracks,
-                    # so force MKV for audio track merge.
-                    obs["merge_output_format"] = "mkv"
-                    obs["outtmpl"] = self.CACHE_DIR + "/download/%(id)s.mkv"
+        # Run pre-download hooks (e.g. multi-audio format selection).
+        hooks = get_download_hooks()
+        hook_contexts = []
+        for hook in hooks:
+            ctx = hook.pre_download(
+                obs,
+                youtube_id,
+                channel_id,
+                self.config,
+                self.channel_overwrites,
+            )
+            hook_contexts.append(ctx)
 
         success, message = YtWrap(obs, self.config).download(youtube_id)
         if not success:
@@ -557,6 +540,20 @@ class VideoDownloader(DownloaderBase):
                         os.remove(af)
                     except FileNotFoundError:
                         pass
+
+        # Run post-download hooks regardless of success so they can clean up.
+        for hook, ctx in zip(hooks, hook_contexts):
+            hook.post_download(ctx, youtube_id, dl_cache, success)
+
+        if not success:
+            return False
+
+        # Run post-download hooks regardless of success so they can clean up.
+        for hook, ctx in zip(hooks, hook_contexts):
+            hook.post_download(ctx, youtube_id, dl_cache, success)
+
+        if not success:
+            return False
 
         if self.obs["writethumbnail"]:
             # webp files don't get cleaned up automatically

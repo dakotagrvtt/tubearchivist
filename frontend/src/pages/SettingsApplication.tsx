@@ -19,6 +19,7 @@ import deleteCookie from '../api/actions/deleteCookie';
 import validateCookie from '../api/actions/validateCookie';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import MembershipAppsettings from '../components/MembershipAppsettings';
+import { APP_SETTINGS_SECTIONS } from '../fork_features/registry';
 
 type SettingsApplicationReponses = {
   snapshots?: SnapshotListType;
@@ -559,50 +560,21 @@ const SettingsApplication = () => {
                   updateCallback={handleUpdateConfig}
                 />
               </div>
-              <div className="settings-box-wrapper">
-                <div>
-                  <p>Enable multistream audio</p>
-                </div>
-                <ToggleConfig
-                  name="downloads.audio_multistream"
-                  value={audioMultistreams}
-                  helperText={
-                    audioMultistreams
-                      ? 'If multiple audio tracks are selected/found, Tube Archivist will automatically save as mkv. Single-audio downloads keep your selected container.'
-                      : 'Enable to include multiple audio languages when available.'
-                  }
-                  updateCallback={handleUpdateConfig}
+
+              {/* Fork feature sections (e.g. multi-audio settings) */}
+              {APP_SETTINGS_SECTIONS.map((Section, i) => (
+                <Section
+                  key={i}
+                  appSettingsConfig={appSettingsConfig}
+                  onRefresh={() => setRefresh(true)}
                 />
-                {audioMultistreamsWarning && (
-                  <p className="settings-error">{audioMultistreamsWarning}</p>
-                )}
-              </div>
-              {audioMultistreams && (
-                <div className="settings-box-wrapper">
-                  <div>
-                    <p>Audio languages</p>
-                  </div>
-                  <InputConfig
-                    type="text"
-                    name="downloads.audio_languages"
-                    value={audioLanguages}
-                    setValue={setAudioLanguages}
-                    oldValue={appSettingsConfig.downloads.audio_languages}
-                    updateCallback={handleUpdateConfig}
-                  />
-                </div>
-              )}
+              ))}
             </div>
             <div className="info-box-item">
               <h2 id="subtitles">Subtitles</h2>
               {userConfig.show_help_text && (
                 <div className="help-text">
-                  <p>Additional subtitle options show once you choose a language.</p>
                   <ul>
-                    <li>
-                      Choose which subtitles to download, add comma separated language codes, e.g.{' '}
-                      <span className="settings-current">en, de, zh-Hans</span>
-                    </li>
                     <li>
                       Enabling auto generated subtitles adds fallback to less accurate auto
                       generated subtitles from YT.

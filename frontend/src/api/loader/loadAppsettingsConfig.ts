@@ -27,9 +27,10 @@ export type AppSettingsConfigType = {
     extractor_lang: string | null;
     integrate_ryd: boolean;
     integrate_sponsorblock: boolean;
-    audio_multistream: boolean;
-    audio_languages: string | null;
-    container: 'mp4' | 'mkv';
+    // fork_features: audio_tracks
+    audio_multistreams?: boolean;
+    audio_languages?: string | null;
+    [key: string]: unknown;
   };
   application: {
     enable_snapshot: boolean;

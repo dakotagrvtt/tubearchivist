@@ -2,7 +2,8 @@ services:
   tubearchivist:
     container_name: tubearchivist
     restart: unless-stopped
-    image: bbilly1/tubearchivist
+    build: .
+    image: tubearchivist-local
     ports:
       - 8000:8000
     volumes:
@@ -18,6 +19,7 @@ services:
       - TA_PASSWORD=verysecret              # your initial TA credentials
       - ELASTIC_PASSWORD=verysecret         # set password for Elasticsearch
       - TZ=America/New_York                 # set your time zone
+      - TA_AUTO_UPDATE_YTDLP=release
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
       interval: 2m
