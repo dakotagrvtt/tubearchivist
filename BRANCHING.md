@@ -140,11 +140,12 @@ Purpose:
 3. test the fork features there
 4. cut or update a stable `fork/vX.Y.Z` branch once validated
 
-Example:
+Example (using `develop` as the current rolling integration branch; update to
+`fork/main` once that branch is created per the cleanup plan):
 
 ```bash
 git fetch upstream --tags
-git checkout fork/main
+git checkout develop
 git merge upstream/develop
 # or: git rebase upstream/develop
 ```
