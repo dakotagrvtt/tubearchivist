@@ -136,9 +136,12 @@ Purpose:
 ### Upstream sync workflow
 
 1. fetch latest upstream changes
-2. update the rolling fork integration branch first
-3. test the fork features there
-4. cut or update a stable `fork/vX.Y.Z` branch once validated
+2. update the rolling fork integration branch with the new upstream code
+3. **merge the previous stable fork branch into `develop`** so that all
+   fork-specific changes are present (this is the step most often missed —
+   without it, the new release branch will not contain your fork features)
+4. resolve any merge conflicts and test the fork features on `develop`
+5. cut a new stable `fork/vX.Y.Z` branch once validated
 
 Example (using `develop` as the current rolling integration branch; update to
 `fork/main` once that branch is created per the cleanup plan):
@@ -146,8 +149,16 @@ Example (using `develop` as the current rolling integration branch; update to
 ```bash
 git fetch upstream --tags
 git checkout develop
+
+# Step 1: bring in the latest upstream code
 git merge upstream/develop
 # or: git rebase upstream/develop
+
+# Step 2: bring in your fork-specific work from the previous release branch
+# (skip if those commits were already merged into develop earlier)
+git merge fork/v0.5.9
+
+# Resolve any conflicts, then test
 ```
 
 Then, after validation:
@@ -156,6 +167,10 @@ Then, after validation:
 git checkout -b fork/v0.6.0
 git push origin fork/v0.6.0
 ```
+
+> **Note:** If `develop` did not already contain the fork changes from
+> `fork/v0.5.9`, skipping the merge step above is why a new release branch
+> would be missing those features.
 
 ### Hotfix workflow
 
