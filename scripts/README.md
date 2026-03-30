@@ -17,8 +17,8 @@ Default behavior:
 
 1. verify the repo and compose paths exist
 2. fetch from `origin`
-3. checkout `fork/v0.5.9` if needed
-4. run `git pull --ff-only origin fork/v0.5.9`
+3. checkout `fork/v0.5.10` if needed
+4. run `git pull --ff-only origin fork/v0.5.10`
 5. run Docker Compose using the external compose file and the parent project
    directory so `build: ./tubearchivist` resolves correctly
 
@@ -31,7 +31,7 @@ bash scripts/deploy-server.sh
 Override defaults with environment variables:
 
 ```bash
-BRANCH=fork/v0.6.0 \
+BRANCH=fork/v0.5.11 \
 PROJECT_DIR=/zpool-8TB/containers/tubearchivist \
 REPO_DIR=/zpool-8TB/containers/tubearchivist/tubearchivist \
 COMPOSE_FILE=/zpool-8TB/containers/tubearchivist/docker-compose.yml \

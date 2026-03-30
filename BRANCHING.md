@@ -25,7 +25,7 @@ assistants:
 
 As of the current documented state:
 
-- `fork/v0.5.9`
+- `fork/v0.5.10`
   - current fork release branch
   - contains the modular fork-features framework
   - contains the audio-tracks feature and player-label metadata restoration
@@ -59,8 +59,8 @@ The recommended meaning of branch names in this fork is:
 
 Format:
 
-- `fork/v0.5.9`
-- `fork/v0.6.0`
+- `fork/v0.5.10`
+- `fork/v0.5.11`
 - etc.
 
 Purpose:
@@ -156,7 +156,7 @@ git merge upstream/develop
 
 # Step 2: bring in your fork-specific work from the previous release branch
 # (skip if those commits were already merged into develop earlier)
-git merge fork/v0.5.9
+git merge fork/v0.5.10
 
 # Resolve any conflicts, then test
 ```
@@ -164,12 +164,12 @@ git merge fork/v0.5.9
 Then, after validation:
 
 ```bash
-git checkout -b fork/v0.6.0
-git push origin fork/v0.6.0
+git checkout -b fork/v0.5.11
+git push origin fork/v0.5.11
 ```
 
 > **Note:** If `develop` did not already contain the fork changes from
-> `fork/v0.5.9`, skipping the merge step above is why a new release branch
+> `fork/v0.5.10`, skipping the merge step above is why a new release branch
 > would be missing those features.
 
 ### Hotfix workflow
@@ -177,12 +177,12 @@ git push origin fork/v0.6.0
 If a deployed fork release needs a small fix:
 
 ```bash
-git checkout fork/v0.5.9
+git checkout fork/v0.5.10
 git checkout -b fix/player-labels
 # make and test the fix
-git checkout fork/v0.5.9
+git checkout fork/v0.5.10
 git merge --ff-only fix/player-labels
-git push origin fork/v0.5.9
+git push origin fork/v0.5.10
 ```
 
 Then port the same fix back to the rolling integration branch if needed.
@@ -193,12 +193,12 @@ Then port the same fix back to the rolling integration branch if needed.
 
 For deployment on another machine, prefer a stable fork branch such as:
 
-- `fork/v0.5.9`
+- `fork/v0.5.10`
 
 Example:
 
 ```bash
-git clone --branch fork/v0.5.9 https://github.com/dakotagrvtt/tubearchivist.git && cd tubearchivist && docker compose up --build -d
+git clone --branch fork/v0.5.10 https://github.com/dakotagrvtt/tubearchivist.git && cd tubearchivist && docker compose up --build -d
 ```
 
 For an existing server install that keeps a custom `docker-compose.yml` outside
@@ -240,7 +240,7 @@ git rebase -i --root --exec 'git commit --amend --no-edit --reset-author'
 Then push with:
 
 ```bash
-git push --force-with-lease origin fork/v0.5.9
+git push --force-with-lease origin fork/v0.5.10
 ```
 
 ---
