@@ -133,6 +133,9 @@ class AudioTracksDownloadHook:
             "extra_audio_to_merge": extra_audio_to_merge,
             "config": config,
             "multi_language": multi_language,
+            # Propagate the user's format_sort preference so individual extra
+            # audio downloads can respect codec/extension quality preferences.
+            "format_sort": config["downloads"].get("format_sort"),
         }
 
     def post_download(
@@ -154,6 +157,7 @@ class AudioTracksDownloadHook:
 
         config = context["config"]
         multi_language: bool = context.get("multi_language", False)
+        format_sort: str | None = context.get("format_sort")
         main_path = os.path.join(dl_cache, f"{youtube_id}.mp4")
         audio_tracks: list[tuple[str, str]] = []
 
@@ -162,6 +166,7 @@ class AudioTracksDownloadHook:
                 track_path = self._download_audio_track(
                     youtube_id, fmt_id, lang, dl_cache, config,
                     try_no_pot=multi_language,
+                    format_sort=format_sort,
                 )
                 if track_path:
                     audio_tracks.append((lang, track_path))
@@ -195,12 +200,19 @@ class AudioTracksDownloadHook:
         dl_cache: str,
         config: dict[str, Any],
         try_no_pot: bool = False,
+        format_sort: str | None = None,
     ) -> str | None:
         """Download one extra audio track to a temporary file.
 
         Each extra language (both leftover DASH and HLS fallback) is
         downloaded as a separate single-stream request to avoid the
         multi-stream check_formats reliability issue.
+
+        The format selector uses ``bestaudio[language={lang}]`` so that
+        yt-dlp chooses the highest quality audio available for that language,
+        optionally honouring the user's ``format_sort`` preference (e.g.
+        codec or extension).  The pre-discovered *format_id* is kept as a
+        yt-dlp fallback (``/``) in case the language filter matches nothing.
 
         When *try_no_pot* is True the download is first attempted with cookie
         but without the POT token (POT can interfere with individual DASH
@@ -209,8 +221,12 @@ class AudioTracksDownloadHook:
         fetched.
         """
         base_name = f"{youtube_id}_audio_{lang}"
-        track_obs = {
-            "format": format_id,
+        # Use a quality-aware format selector: prefer bestaudio for the
+        # specific language (respecting format_sort), fall back to the
+        # specific format_id discovered during pre-download.
+        fmt_selector = f"bestaudio[language={lang}]/{format_id}"
+        track_obs: dict[str, Any] = {
+            "format": fmt_selector,
             "outtmpl": os.path.join(dl_cache, f"{base_name}.%(ext)s"),
             "audio_multistreams": False,
             "quiet": True,
@@ -218,9 +234,13 @@ class AudioTracksDownloadHook:
             "no_warnings": True,
             "noplaylist": True,
         }
+        if format_sort:
+            track_obs["format_sort"] = [
+                s.strip() for s in format_sort.split(",") if s.strip()
+            ]
 
         print(
-            f"[audio_languages] downloading extra audio {lang}: {format_id}"
+            f"[audio_languages] downloading extra audio {lang}: {fmt_selector}"
         )
 
         if try_no_pot:

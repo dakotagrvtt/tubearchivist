@@ -322,7 +322,7 @@ final mp4 file.
 | `languages.py` | BCP-47 ↔ yt-dlp language code mapping |
 | `media_streams.py` | Enriches extracted audio stream metadata for player labels |
 | `ffmpeg_merge.py` | Merges extra audio tracks into the mp4 after download |
-| `downloader.py` | `AudioTracksDownloadHook` – selects the primary audio language for the main yt-dlp format string (video + one audio); all extra DASH and HLS audio languages are downloaded as individual single-stream requests in post-download and merged via ffmpeg. This avoids yt-dlp's `check_formats: selected` silently dropping extra streams when a cookie+POT is configured. Individual extra-track downloads attempt cookie-but-no-POT first to avoid POT interference with DASH audio URLs, falling back to the full config if needed. |
+| `downloader.py` | `AudioTracksDownloadHook` – selects the primary audio language for the main yt-dlp format string (video + one audio); all extra DASH and HLS audio languages are downloaded as individual single-stream requests in post-download and merged via ffmpeg. This avoids yt-dlp's `check_formats: selected` silently dropping extra streams when a cookie+POT is configured. Each individual download uses a `bestaudio[language=X]/fallback_id` selector so yt-dlp picks the highest quality format for that language, respecting the user's global `format_sort` preference (codec/extension). Individual downloads attempt cookie-but-no-POT first, falling back to full config if needed. |
 
 **Frontend** – `frontend/src/fork_features/audioTracks/`
 
