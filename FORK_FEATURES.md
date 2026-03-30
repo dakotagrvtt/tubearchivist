@@ -322,7 +322,7 @@ final mp4 file.
 | `languages.py` | BCP-47 ↔ yt-dlp language code mapping |
 | `media_streams.py` | Enriches extracted audio stream metadata for player labels |
 | `ffmpeg_merge.py` | Merges extra audio tracks into the mp4 after download |
-| `downloader.py` | `AudioTracksDownloadHook` – injects multi-audio yt-dlp options pre-download, runs ffmpeg merge post-download |
+| `downloader.py` | `AudioTracksDownloadHook` – injects multi-audio yt-dlp options pre-download, runs ffmpeg merge post-download. When multiple audio languages are discovered, HLS fallback tracks are first attempted **without** cookies/POT (to avoid POT incompatibility with HLS streams); if that fails the download is retried with the configured cookie so age-restricted or private content can still be fetched. |
 
 **Frontend** – `frontend/src/fork_features/audioTracks/`
 

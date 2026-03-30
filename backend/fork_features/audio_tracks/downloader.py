@@ -98,6 +98,7 @@ class AudioTracksDownloadHook:
         return {
             "hls_formats_to_merge": hls_formats_to_merge,
             "config": config,
+            "multi_language": len(languages) > 1 if languages else False,
         }
 
     def post_download(
@@ -118,13 +119,15 @@ class AudioTracksDownloadHook:
             return
 
         config = context["config"]
+        multi_language: bool = context.get("multi_language", False)
         main_path = os.path.join(dl_cache, f"{youtube_id}.mp4")
         audio_tracks: list[tuple[str, str]] = []
 
         try:
             for lang, fmt_id in hls_formats_to_merge.items():
                 track_path = self._download_hls_audio(
-                    youtube_id, fmt_id, lang, dl_cache, config
+                    youtube_id, fmt_id, lang, dl_cache, config,
+                    try_without_cookie=multi_language,
                 )
                 if track_path:
                     audio_tracks.append((lang, track_path))
@@ -145,8 +148,16 @@ class AudioTracksDownloadHook:
         lang: str,
         dl_cache: str,
         config: dict[str, Any],
+        try_without_cookie: bool = False,
     ) -> str | None:
-        """Download one HLS fallback variant to a temporary file."""
+        """Download one HLS fallback variant to a temporary file.
+
+        When *try_without_cookie* is True (i.e. multiple audio languages were
+        discovered) the download is first attempted without any cookie or POT
+        token, which avoids POT incompatibility with HLS streams.  If that
+        fails the download is retried with the full cookie/POT config so the
+        video can still be fetched when authentication is genuinely required.
+        """
         base_name = f"{youtube_id}_audio_{lang}"
         hls_obs = {
             "format": format_id,
@@ -161,7 +172,25 @@ class AudioTracksDownloadHook:
         print(
             f"[audio_languages] downloading HLS fallback {lang}: {format_id}"
         )
-        success, _ = YtWrap(hls_obs, config).download(youtube_id)
+
+        if try_without_cookie:
+            # First attempt: no cookie / no POT – avoids POT incompatibility
+            # that breaks HLS stream downloads when a cookie is configured.
+            print(
+                f"[audio_languages] trying HLS {lang} without cookie first"
+            )
+            success, _ = YtWrap(hls_obs, False).download(youtube_id)
+            if not success:
+                # Second attempt: fall back to full cookie config so
+                # age-restricted or private content can still be fetched.
+                print(
+                    f"[audio_languages] cookieless HLS failed for {lang}, "
+                    "retrying with cookie"
+                )
+                success, _ = YtWrap(hls_obs, config).download(youtube_id)
+        else:
+            success, _ = YtWrap(hls_obs, config).download(youtube_id)
+
         if not success:
             print(
                 f"[audio_languages] failed HLS fallback download for: {lang}"
