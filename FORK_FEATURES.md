@@ -144,7 +144,7 @@ well-commented integration points:
 | `backend/appsettings/src/config.py` | Import `get_config_defaults` + `_effective_defaults()` method + `clear_old_keys()` uses it |
 | `backend/channel/serializers.py` | Import `get_channel_serializer_fields` + `get_fields()` override |
 | `backend/channel/src/index.py` | Import `get_channel_overwrite_keys` + extends `OVERWRITES` list |
-| `backend/download/src/yt_dlp_handler.py` | Import `get_download_hooks` + pre/post hook calls in `_dl_single_vid()` |
+| `backend/download/src/yt_dlp_handler.py` | Import `get_download_hooks` + pre/post hook calls in `_dl_single_vid()`; checks hook contexts for `try_cookieless` signal to attempt cookie-free download first |
 | `backend/video/src/media_streams.py` | Import `get_media_stream_enrichers` + enrichment hook call in audio stream extraction |
 | `backend/video/serializers.py` | Optional stream metadata fields for enriched audio stream labels |
 | `frontend/src/api/loader/loadAppsettingsConfig.ts` | Fork-only config fields added to the app settings TypeScript type |

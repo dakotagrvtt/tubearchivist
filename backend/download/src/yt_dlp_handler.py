@@ -509,7 +509,24 @@ class VideoDownloader(DownloaderBase):
             )
             hook_contexts.append(ctx)
 
-        success, message = YtWrap(obs, self.config).download(youtube_id)
+        # Fork-feature hook: attempt the download without cookies/POT first
+        # when a hook signals try_cookieless (e.g. multi-audio language mode).
+        # POT tokens can cause yt-dlp to silently drop extra DASH audio tracks
+        # on a nominally successful download.  If the cookieless attempt fails
+        # we fall back to the full config so authenticated content still works.
+        use_cookieless = any(ctx.get("try_cookieless") for ctx in hook_contexts)
+        if use_cookieless:
+            print(f"{youtube_id}: attempting download without cookie/POT first")
+            success, message = YtWrap(obs, False).download(youtube_id)
+            if not success:
+                print(
+                    f"{youtube_id}: cookieless download failed, "
+                    "retrying with cookie"
+                )
+                success, message = YtWrap(obs, self.config).download(youtube_id)
+        else:
+            success, message = YtWrap(obs, self.config).download(youtube_id)
+
         if not success:
             self._handle_error(youtube_id, message)
             return False

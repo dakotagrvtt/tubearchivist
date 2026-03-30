@@ -95,10 +95,17 @@ class AudioTracksDownloadHook:
                         if lang != first_lang
                     }
 
+        multi_language = len(languages) > 1 if languages else False
         return {
             "hls_formats_to_merge": hls_formats_to_merge,
             "config": config,
-            "multi_language": len(languages) > 1 if languages else False,
+            "multi_language": multi_language,
+            # Signal the main downloader to attempt the video download without
+            # cookies/POT first when multiple audio languages are in play.
+            # POT tokens are incompatible with multi-stream DASH requests and
+            # cause yt-dlp to silently drop extra audio tracks even on a
+            # nominally successful download.
+            "try_cookieless": multi_language,
         }
 
     def post_download(
