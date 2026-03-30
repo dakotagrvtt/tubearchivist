@@ -101,11 +101,14 @@ class AudioTracksDownloadHook:
             "config": config,
             "multi_language": multi_language,
             # Signal the main downloader to attempt the video download without
-            # cookies/POT first when multiple audio languages are in play.
+            # a POT token when multiple audio languages are in play.
             # POT tokens are incompatible with multi-stream DASH requests and
             # cause yt-dlp to silently drop extra audio tracks even on a
-            # nominally successful download.
-            "try_cookieless": multi_language,
+            # nominally successful download.  The cookie must still be used
+            # because the multi-audio format IDs are only available to
+            # authenticated sessions; only the POT is stripped on the first
+            # attempt.
+            "try_no_pot": multi_language,
         }
 
     def post_download(

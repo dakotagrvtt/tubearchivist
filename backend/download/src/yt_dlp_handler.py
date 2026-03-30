@@ -509,19 +509,22 @@ class VideoDownloader(DownloaderBase):
             )
             hook_contexts.append(ctx)
 
-        # Fork-feature hook: attempt the download without cookies/POT first
-        # when a hook signals try_cookieless (e.g. multi-audio language mode).
-        # POT tokens can cause yt-dlp to silently drop extra DASH audio tracks
-        # on a nominally successful download.  If the cookieless attempt fails
-        # we fall back to the full config so authenticated content still works.
-        use_cookieless = any(ctx.get("try_cookieless") for ctx in hook_contexts)
-        if use_cookieless:
-            print(f"{youtube_id}: attempting download without cookie/POT first")
-            success, message = YtWrap(obs, False).download(youtube_id)
+        # Fork-feature hook: attempt the download with cookie but without the
+        # POT token when a hook signals try_no_pot (e.g. multi-audio mode).
+        # POT tokens are incompatible with multi-stream DASH requests and cause
+        # yt-dlp to silently drop extra audio tracks even on a nominally
+        # successful download.  The cookie must be kept because the multi-audio
+        # DASH format IDs are only available to authenticated sessions.
+        # If the no-POT attempt fails, we fall back to the full config.
+        use_no_pot = any(ctx.get("try_no_pot") for ctx in hook_contexts)
+        if use_no_pot:
+            print(f"{youtube_id}: attempting download with cookie but without POT")
+            no_pot_config = self._strip_pot_config(self.config)
+            success, message = YtWrap(obs, no_pot_config).download(youtube_id)
             if not success:
                 print(
-                    f"{youtube_id}: cookieless download failed, "
-                    "retrying with cookie"
+                    f"{youtube_id}: no-POT download failed, "
+                    "retrying with full config"
                 )
                 success, message = YtWrap(obs, self.config).download(youtube_id)
         else:
@@ -548,6 +551,19 @@ class VideoDownloader(DownloaderBase):
                 os.remove(file_path)
 
         return True
+
+    @staticmethod
+    def _strip_pot_config(config: dict) -> dict:
+        """Return a deep copy of config with pot_provider_url removed.
+
+        Used when attempting a multi-audio DASH download without the POT
+        token, which is incompatible with multi-stream requests.
+        """
+        import copy
+
+        no_pot = copy.deepcopy(config)
+        no_pot["downloads"].pop("pot_provider_url", None)
+        return no_pot
 
     @staticmethod
     def _handle_error(youtube_id, message):
