@@ -16,6 +16,7 @@ import loadSimilarVideosById from '../api/loader/loadSimilarVideosById';
 import VideoList from '../components/VideoList';
 import updateWatchedState from '../api/actions/updateWatchedState';
 import humanFileSize from '../functions/humanFileSize';
+import capitalizeFirstLetter from '../functions/capitalizeFirstLetter';
 import ScrollToTopOnNavigate from '../components/ScrollToTop';
 import ChannelOverview from '../components/ChannelOverview';
 import deleteVideo from '../api/actions/deleteVideo';
@@ -466,6 +467,7 @@ const Video = () => {
             {video.streams &&
               video.streams.map(stream => {
                 const streamLabel = formatVideoStreamLabel(stream);
+                const layoutLabel = `${stream.width}x${stream.height}`;
 
                 return (
                   <p key={stream.index}>

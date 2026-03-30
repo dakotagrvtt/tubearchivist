@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import loadSnapshots, { SnapshotListType } from '../api/loader/loadSnapshots';
 import Notifications from '../components/Notifications';
 import PaginationDummy from '../components/PaginationDummy';
@@ -57,10 +57,6 @@ const SettingsApplication = () => {
   const [downloadsFormatSort, setDownloadsFormatSort] = useState<string | null>(null);
   const [downloadsExtractorLang, setDownloadsExtractorLang] = useState<string | null>(null);
   const [embedMetadata, setEmbedMetadata] = useState(false);
-  const [audioMultistreams, setAudioMultistreams] = useState(false);
-  const [downloadContainer, setDownloadContainer] = useState<'mp4' | 'mkv'>('mp4');
-  const [audioLanguages, setAudioLanguages] = useState<string | null>(null);
-  const [audioMultistreamsWarning, setAudioMultistreamsWarning] = useState<string | null>(null);
 
   // Subtitles
   const [subtitleLang, setSubtitleLang] = useState<string | null>(null);
@@ -117,10 +113,6 @@ const SettingsApplication = () => {
     setDownloadsFormatSort(appSettingsConfigData?.downloads.format_sort || null);
     setDownloadsExtractorLang(appSettingsConfigData?.downloads.extractor_lang || null);
     setEmbedMetadata(appSettingsConfigData?.downloads.add_metadata || false);
-    setAudioMultistreams(appSettingsConfigData?.downloads.audio_multistream || false);
-    setAudioLanguages(appSettingsConfigData?.downloads.audio_languages || null);
-    setDownloadContainer(appSettingsConfigData?.downloads.container || 'mp4');
-    setAudioMultistreamsWarning(null);
 
     // Subtitles
     setSubtitleLang(appSettingsConfigData?.downloads.subtitle || null);
@@ -158,10 +150,8 @@ const SettingsApplication = () => {
     const updatedConfig = { [group]: { [key]: configValue } } as Partial<AppSettingsConfigType>;
     const response = await updateAppsettingsConfig(updatedConfig);
     if (response?.error?.error) {
-      setAudioMultistreamsWarning(response.error.error);
       return;
     }
-    setAudioMultistreamsWarning(null);
     setRefresh(true);
   };
 
@@ -477,17 +467,12 @@ const SettingsApplication = () => {
                       </ul>
                     </li>
                     <li>
-                      Download container sets the default file type: mp4 is most browser-friendly,
-                      while mkv is better for multi-audio tracks.
-                    </li>
-                    <li>
                       Embedding metadata adds additional metadata and thumbnails directly to mp4
-                      files. Mkv downloads are not embedded by this option.
+                      files.
                     </li>
                     <li>
                       Enable multistream audio to download multiple audio languages (maps to{' '}
-                      <i>--audio-multistreams</i>). This increases file size and may use mkv when
-                      multiple tracks are selected.
+                      <i>--audio-multistreams</i>). This increases file size.
                     </li>
                   </ul>
                 </div>
@@ -530,25 +515,6 @@ const SettingsApplication = () => {
                   oldValue={appSettingsConfig.downloads.extractor_lang}
                   updateCallback={handleUpdateConfig}
                 />
-              </div>
-              <div className="settings-box-wrapper">
-                <div>
-                  <p>Download container</p>
-                </div>
-                <div>
-                  <select
-                    name="downloads.container"
-                    value={downloadContainer}
-                    onChange={async (event: ChangeEvent<HTMLSelectElement>) => {
-                      const value = event.target.value as 'mp4' | 'mkv';
-                      await handleUpdateConfig('downloads.container', value);
-                      setDownloadContainer(value);
-                    }}
-                  >
-                    <option value="mp4">mp4 (browser friendly)</option>
-                    <option value="mkv">mkv (multi-audio)</option>
-                  </select>
-                </div>
               </div>
               <div className="settings-box-wrapper">
                 <div>

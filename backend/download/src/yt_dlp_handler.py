@@ -490,14 +490,6 @@ class VideoDownloader(DownloaderBase):
                 langs.append(lang)
         return langs
 
-        # Keep output container mp4-only regardless of channel/global values.
-        obs["merge_output_format"] = "mp4"
-        obs["outtmpl"] = self.CACHE_DIR + "/download/%(id)s.mp4"
-
-        # Keep output container mp4-only regardless of channel/global values.
-        obs["merge_output_format"] = "mp4"
-        obs["outtmpl"] = self.CACHE_DIR + "/download/%(id)s.mp4"
-
     def _dl_single_vid(self, youtube_id: str, channel_id: str) -> bool:
         """download one video, running fork-feature hooks around the download"""
         obs = self.obs.copy()
@@ -520,32 +512,6 @@ class VideoDownloader(DownloaderBase):
         success, message = YtWrap(obs, self.config).download(youtube_id)
         if not success:
             self._handle_error(youtube_id, message)
-            return False
-
-        # phase 2: merge HLS-only language audio tracks via ffmpeg
-        if hls_formats and selected_audio_count > 1:
-            main_path = os.path.join(dl_cache, f"{youtube_id}.mkv")
-            audio_tracks: list[tuple[str, str]] = []
-            try:
-                for lang, fmt_id in hls_formats.items():
-                    af = self._download_hls_audio(youtube_id, fmt_id, lang)
-                    if af:
-                        audio_tracks.append((lang, af))
-
-                if audio_tracks:
-                    self._merge_audio_tracks(main_path, audio_tracks)
-            finally:
-                for _, af in audio_tracks:
-                    try:
-                        os.remove(af)
-                    except FileNotFoundError:
-                        pass
-
-        # Run post-download hooks regardless of success so they can clean up.
-        for hook, ctx in zip(hooks, hook_contexts):
-            hook.post_download(ctx, youtube_id, dl_cache, success)
-
-        if not success:
             return False
 
         # Run post-download hooks regardless of success so they can clean up.

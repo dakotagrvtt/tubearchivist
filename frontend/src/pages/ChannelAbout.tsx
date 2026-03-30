@@ -1,6 +1,6 @@
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import ChannelOverview from '../components/ChannelOverview';
-import { ChangeEvent, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import loadChannelById, { ChannelResponseType } from '../api/loader/loadChannelById';
 import loadAppsettingsConfig, {
   AppSettingsConfigType,
@@ -52,7 +52,6 @@ const ChannelAbout = () => {
   const [appSettingsConfig, setAppSettingsConfig] = useState<AppSettingsConfigType | null>(null);
 
   const [downloadFormat, setDownloadFormat] = useState<string | null>(null);
-  const [downloadContainer, setDownloadContainer] = useState<'mp4' | 'mkv' | null>(null);
   const [audioMultistreams, setAudioMultistreams] = useState<boolean | null>(null);
   const [audioMultistreamsWarning, setAudioMultistreamsWarning] = useState<string | null>(null);
   const [audioLanguages, setAudioLanguages] = useState<string | null>(null);
@@ -74,9 +73,6 @@ const ChannelAbout = () => {
 
         setChannelResponse(channelResponse);
         setDownloadFormat(channelResponseData?.channel_overwrites?.download_format ?? null);
-        setDownloadContainer(
-          channelResponseData?.channel_overwrites?.download_container ?? null,
-        );
         setAudioMultistreams(
           channelResponseData?.channel_overwrites?.audio_multistream ?? null,
         );
@@ -329,45 +325,6 @@ const ChannelAbout = () => {
                   />
                 ))}
 
-              <div className="settings-box-wrapper">
-                <div>
-                  <p>Download Container</p>
-                </div>
-                <div>
-                  <select
-                    name="download_container"
-                    value={downloadContainer ?? ''}
-                    onChange={async (event: ChangeEvent<HTMLSelectElement>) => {
-                      const value = event.target.value as 'mp4' | 'mkv' | '';
-
-                      if (value === '') {
-                        if (audioMultistreams) {
-                          // Always clear channel multistream FIRST when switching to global container.
-                          // This avoids stale global-container state causing persistent override drift.
-                          await handleUpdateConfig('audio_multistream', null);
-                          setAudioMultistreams(null);
-                        }
-                        await handleUpdateConfig('download_container', null);
-                        setDownloadContainer(null);
-                        return;
-                      }
-
-                      if (value !== 'mkv' && audioMultistreams) {
-                        // Clear multistream first when switching to single-audio container preference.
-                        await handleUpdateConfig('audio_multistream', null);
-                        setAudioMultistreams(null);
-                      }
-
-                      await handleUpdateConfig('download_container', value);
-                      setDownloadContainer(value);
-                    }}
-                  >
-                    <option value="">(use global)</option>
-                    <option value="mp4">mp4</option>
-                    <option value="mkv">mkv</option>
-                  </select>
-                </div>
-              </div>
               <div className="settings-box-wrapper">
                 <div>
                   <p>Enable multistream audio</p>

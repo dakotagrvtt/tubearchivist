@@ -20,7 +20,6 @@ import { ViewStylesEnum, ViewStylesType } from '../configuration/constants/ViewS
 
 type ChannelOverwritesType = {
   download_format: string | null;
-  download_container: 'mp4' | 'mkv' | null;
   audio_multistream: boolean | null;
   audio_languages: string | null;
   autodelete_days: number | null;
@@ -31,7 +30,6 @@ type ChannelOverwritesType = {
   subscriptions_shorts_channel_size: number | null;
   // fork_features: audio_tracks
   audio_multistreams?: boolean | null;
-  audio_languages?: string | null;
   [key: string]: unknown;
 };
 
