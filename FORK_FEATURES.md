@@ -144,7 +144,7 @@ well-commented integration points:
 | `backend/appsettings/src/config.py` | Import `get_config_defaults` + `_effective_defaults()` method + `clear_old_keys()` uses it |
 | `backend/channel/serializers.py` | Import `get_channel_serializer_fields` + `get_fields()` override |
 | `backend/channel/src/index.py` | Import `get_channel_overwrite_keys` + extends `OVERWRITES` list |
-| `backend/download/src/yt_dlp_handler.py` | Import `get_download_hooks` + pre/post hook calls in `_dl_single_vid()`; checks hook contexts for `try_no_pot` signal to attempt cookie-but-no-POT download first; adds `_strip_pot_config()` helper |
+| `backend/download/src/yt_dlp_handler.py` | Import `get_download_hooks` + pre/post hook calls in `_dl_single_vid()` |
 | `backend/video/src/media_streams.py` | Import `get_media_stream_enrichers` + enrichment hook call in audio stream extraction |
 | `backend/video/serializers.py` | Optional stream metadata fields for enriched audio stream labels |
 | `frontend/src/api/loader/loadAppsettingsConfig.ts` | Fork-only config fields added to the app settings TypeScript type |
@@ -322,7 +322,7 @@ final mp4 file.
 | `languages.py` | BCP-47 ↔ yt-dlp language code mapping |
 | `media_streams.py` | Enriches extracted audio stream metadata for player labels |
 | `ffmpeg_merge.py` | Merges extra audio tracks into the mp4 after download |
-| `downloader.py` | `AudioTracksDownloadHook` – injects multi-audio yt-dlp options pre-download, runs ffmpeg merge post-download. When multiple audio languages are discovered, the main video download is first attempted **with cookie but without POT** (POT tokens are incompatible with multi-stream DASH requests and cause yt-dlp to silently drop extra audio tracks); if that fails the download is retried with the full config (cookie + POT) so restricted content can still be fetched. HLS fallback tracks follow the same pattern for the same reason. |
+| `downloader.py` | `AudioTracksDownloadHook` – selects the primary audio language for the main yt-dlp format string (video + one audio); all extra DASH and HLS audio languages are downloaded as individual single-stream requests in post-download and merged via ffmpeg. This avoids yt-dlp's `check_formats: selected` silently dropping extra streams when a cookie+POT is configured. Individual extra-track downloads attempt cookie-but-no-POT first to avoid POT interference with DASH audio URLs, falling back to the full config if needed. |
 
 **Frontend** – `frontend/src/fork_features/audioTracks/`
 
