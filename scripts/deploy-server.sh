@@ -17,7 +17,7 @@ set -euo pipefail
 PROJECT_DIR="${PROJECT_DIR:-/zpool-8TB/containers/tubearchivist}"
 REPO_DIR="${REPO_DIR:-${PROJECT_DIR}/tubearchivist}"
 COMPOSE_FILE="${COMPOSE_FILE:-${PROJECT_DIR}/docker-compose.yml}"
-BRANCH="${BRANCH:-fork/v0.5.9}"
+BRANCH="${BRANCH:-fork/v0.5.10}"
 REMOTE="${REMOTE:-origin}"
 ALLOW_DIRTY="${ALLOW_DIRTY:-0}"
 
