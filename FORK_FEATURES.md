@@ -70,10 +70,35 @@ The registry exposes **accessor functions** that upstream integration points cal
 | `get_channel_serializer_fields()` | `channel/serializers.py` → `ChannelOverwriteSerializer.get_fields()` | Adds DRF fields to the channel overwrite serializer |
 | `get_channel_overwrite_keys()` | `channel/src/index.py` → `YoutubeChannel.OVERWRITES` | Adds keys to the channel overwrite index list |
 | `get_download_hooks()` | `download/src/yt_dlp_handler.py` → `_dl_single_vid()` | Returns `DownloadHook` objects called before/after each download |
+| `get_url_resolvers()` | `common/src/urlparser.py` → `Parser.process_url()` | Returns `UrlResolver` objects consulted for non-YouTube URLs |
 | `get_media_stream_enrichers()` | `video/src/media_streams.py` → `_extract_audio_metadata()` | Enriches extracted stream metadata for fork-specific UI |
 
 Each upstream file contains a small, explicit integration point. The goal is to keep upstream
 diffs narrow and predictable, even if a given file needs slightly more than 1-3 added lines.
+
+### Backend – URL Resolvers
+
+URL resolvers implement the `UrlResolver` protocol:
+
+```python
+class UrlResolver(Protocol):
+    def can_resolve(self, netloc: str) -> bool:
+        """Return True if this resolver handles URLs on the given domain."""
+        ...
+
+    def resolve(self, url: str) -> dict:
+        """Resolve the URL and return a ParsedURLType-compatible dict.
+
+        The 'url' key must be the platform-native video ID (used as
+        youtube_id throughout the system).  Include a 'source_url' key
+        with the original full URL so re-downloads work correctly.
+        """
+        ...
+```
+
+The parser calls resolvers in registration order.  The first resolver whose
+`can_resolve()` returns `True` wins; if no resolver claims the URL a
+`ValueError` is raised as before.
 
 ### Backend – Download Hooks
 
@@ -144,7 +169,7 @@ well-commented integration points:
 | `backend/appsettings/src/config.py` | Import `get_config_defaults` + `_effective_defaults()` method + `clear_old_keys()` uses it |
 | `backend/channel/serializers.py` | Import `get_channel_serializer_fields` + `get_fields()` override |
 | `backend/channel/src/index.py` | Import `get_channel_overwrite_keys` + extends `OVERWRITES` list |
-| `backend/download/src/yt_dlp_handler.py` | Import `get_download_hooks` + pre/post hook calls in `_dl_single_vid()` |
+| `backend/download/src/yt_dlp_handler.py` | Import `get_download_hooks` + pre/post hook calls + `download_target` override in `_dl_single_vid()` |
 | `backend/video/src/media_streams.py` | Import `get_media_stream_enrichers` + enrichment hook call in audio stream extraction |
 | `backend/video/serializers.py` | Optional stream metadata fields for enriched audio stream labels |
 | `frontend/src/api/loader/loadAppsettingsConfig.ts` | Fork-only config fields added to the app settings TypeScript type |
@@ -307,6 +332,19 @@ then re-add the 1-3 fork hook lines.
 
 ---
 
+## Upstream Files Touched by `generic_downloads`
+
+| File | What was added |
+|---|---|
+| `backend/fork_features/registry.py` | `UrlResolver` protocol + `url_resolver` field + `get_url_resolvers()` accessor |
+| `backend/common/src/urlparser.py` | `source_url: NotRequired[str]` on `ParsedURLType`; resolver hook call instead of ValueError for non-YouTube domains |
+| `backend/common/src/index_generic.py` | `self.source_url` attribute on `YouTubeItem`; `build_yt_url()` returns it when set |
+| `backend/download/src/queue.py` | Thread `source_url` through `_process_entry` → `_add_video` → `_parse_video`; persist in pending document |
+| `backend/download/src/yt_dlp_handler.py` | Use `download_target` from hook context in `_dl_single_vid()`; pass `source_url` to `index_new_video()` |
+| `backend/video/src/index.py` | `index_new_video()` accepts `source_url`; guards in `_validate_id`, `_get_ryd_stats`, `_get_sponsorblock` |
+
+---
+
 ## Existing Fork Features
 
 ### Multi-Audio Language Download (`audio_tracks`)
@@ -340,6 +378,38 @@ final mp4 file.
 **Why upstream rejected it:** Chrome/Firefox do not natively support switching audio tracks in an
 HTML5 `<video>` element without a custom player or server-side ffmpeg transcoding — both of which
 are out of scope for the upstream project.
+
+---
+
+### Generic Downloads (`generic_downloads`)
+
+Enables downloading individual video URLs from any website supported by
+yt-dlp (e.g. Rumble, Vimeo, Dailymotion) by making the URL parsing and
+download pipeline site-agnostic.
+
+**Backend** – `backend/fork_features/generic_downloads/`
+
+| File | Description |
+|---|---|
+| `__init__.py` | Calls `register()` with `url_resolver` and `download_hook` |
+| `resolver.py` | `GenericUrlResolver` – accepts any non-YouTube URL; uses yt-dlp to probe the URL and return the canonical video ID + `source_url` |
+| `downloader.py` | `GenericDownloadHook` – in `pre_download`, fetches `source_url` from the ES pending document and returns it as `download_target` so yt-dlp downloads from the correct platform URL |
+
+**No frontend changes** – non-YouTube videos appear in the UI identically to
+YouTube videos.  The user simply pastes a Rumble (or other) URL into the
+download queue input.
+
+**What works:** individual video downloads, metadata indexing, full-text
+search, thumbnail, subtitles (if the platform provides them), watch history.
+
+**What is skipped for non-YouTube videos:**
+- SponsorBlock (YouTube-only API)
+- Return YouTube Dislikes (YouTube-only API)
+- Comments (YouTube-only extraction)
+
+**Phase 2 (not yet implemented):** channel subscriptions for non-YouTube
+sources — would require storing the channel's full URL and adapting
+`remote_query.py`.
 
 ---
 

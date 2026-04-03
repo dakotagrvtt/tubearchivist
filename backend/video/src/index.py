@@ -197,6 +197,30 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
 
     def process_youtube_meta(self):
         """extract relevant fields from youtube"""
+        # fork: generic_downloads — normalise uploader/uploader_id for non-YouTube
+        # platforms where yt-dlp may not populate channel/channel_id directly.
+        if self.source_url:
+            meta = self.youtube_meta
+            if not meta.get("channel") and meta.get("uploader"):
+                meta["channel"] = meta["uploader"]
+            if not meta.get("channel_id"):
+                if meta.get("uploader_id"):
+                    meta["channel_id"] = (
+                        meta["uploader_id"].strip("/").replace("/", "_")
+                    )
+                else:
+                    # Replace dots with underscores so the ID is URL-safe in routing.
+                    domain = (
+                        meta.get("webpage_url_domain", "unknown")
+                        .replace(".", "_")
+                    )
+                    uploader = (
+                        meta.get("uploader", "unknown")
+                        .lower()
+                        .replace(" ", "_")
+                    )
+                    meta["channel_id"] = f"ext_{domain}_{uploader}"
+
         self._validate_id()
         self.channel_id = self.youtube_meta["channel_id"]
         last_refresh = int(datetime.now().timestamp())
@@ -247,7 +271,18 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         remote_id = self.youtube_meta["id"]
 
         if not self.youtube_id == remote_id:
-            # unexpected redirect
+            # fork: generic_downloads — non-YouTube IDs may be normalised by
+            # yt-dlp during full extraction; treat that as a benign update
+            # rather than a bot-detection redirect error.
+            if self.source_url:
+                print(
+                    f"[generic_downloads] {self.youtube_id}: "
+                    f"ID normalised to {remote_id!r}, updating"
+                )
+                self.youtube_id = remote_id
+                return
+
+            # unexpected redirect (YouTube only)
             message = (
                 f"[reindex][{self.youtube_id}] got an unexpected redirect "
                 + f"to {remote_id}, you are probably getting blocked by YT. "
@@ -430,6 +465,9 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
 
     def _get_ryd_stats(self):
         """get optional stats from returnyoutubedislikeapi.com"""
+        # fork: generic_downloads — RYD only tracks YouTube video IDs
+        if self.source_url:
+            return
         # pylint: disable=broad-except
         try:
             print(f"{self.youtube_id}: get ryd stats")
@@ -449,6 +487,9 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
 
     def _get_sponsorblock(self):
         """get optional sponsorblock timestamps from sponsor.ajay.app"""
+        # fork: generic_downloads — SponsorBlock only indexes YouTube content
+        if self.source_url:
+            return
         sponsorblock = SponsorBlock().get_timestamps(self.youtube_id)
         if sponsorblock:
             self.json_data["sponsorblock"] = sponsorblock
@@ -571,11 +612,15 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         ThumbManager(self.youtube_id).embed_video_art(self.json_data)
 
 
-def index_new_video(youtube_id, video_type=VideoTypeEnum.VIDEOS):
+def index_new_video(youtube_id, video_type=VideoTypeEnum.VIDEOS, source_url=None):
     """combined classes to create new video in index"""
     from appsettings.src.reindex import Reindex
 
     video = YoutubeVideo(youtube_id, video_type=video_type)
+    # fork: generic_downloads — set source_url so build_yt_url() and YouTube-
+    # only feature guards work correctly for non-YouTube videos.
+    if source_url:
+        video.source_url = source_url
     video.get_from_es(print_error=False)
     if video.json_data:
         # reindex only for force redownload

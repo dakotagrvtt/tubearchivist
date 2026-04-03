@@ -83,7 +83,12 @@ class VideoDownloader(DownloaderBase):
 
             self._notify(video_data, "Add video metadata to index", progress=1)
             video_type = VideoTypeEnum(video_data["vid_type"])
-            vid_dict = index_new_video(youtube_id, video_type=video_type)
+            # fork: generic_downloads — pass source_url so YoutubeVideo uses the
+            # correct platform URL when re-fetching metadata after download.
+            source_url = video_data.get("source_url")
+            vid_dict = index_new_video(
+                youtube_id, video_type=video_type, source_url=source_url
+            )
             RedisQueue(self.CHANNEL_QUEUE).add(channel_id)
             RedisQueue(self.VIDEO_QUEUE).add(youtube_id)
 
@@ -509,7 +514,15 @@ class VideoDownloader(DownloaderBase):
             )
             hook_contexts.append(ctx)
 
-        success, message = YtWrap(obs, self.config).download(youtube_id)
+        # fork: generic_downloads — use download_target from hook context when
+        # available (non-YouTube videos need the full source URL, not bare ID).
+        download_target = youtube_id
+        for ctx in hook_contexts:
+            if "download_target" in ctx:
+                download_target = ctx["download_target"]
+                break
+
+        success, message = YtWrap(obs, self.config).download(download_target)
 
         if not success:
             self._handle_error(youtube_id, message)

@@ -73,6 +73,29 @@ class DownloadHook(Protocol):
         ...
 
 
+class UrlResolver(Protocol):
+    """Protocol that fork-feature URL resolvers must satisfy.
+
+    Resolvers are consulted by the URL parser when a URL does not belong to
+    a natively-supported domain (e.g. a non-YouTube URL).  The first resolver
+    that returns ``True`` from ``can_resolve`` wins.
+    """
+
+    def can_resolve(self, netloc: str) -> bool:
+        """Return True if this resolver can handle URLs on *netloc*."""
+        ...
+
+    def resolve(self, url: str) -> "ParsedURLType":
+        """Resolve *url* and return a :class:`ParsedURLType` dict.
+
+        The ``url`` field inside the returned dict should be the platform's
+        native video/item ID (used as ``youtube_id`` throughout the system).
+        Include a ``source_url`` key with the original full URL so that
+        re-downloads can reconstruct the correct address.
+        """
+        ...
+
+
 class MediaStreamEnricher(Protocol):
     """Protocol for augmenting extracted media stream metadata.
 
@@ -103,6 +126,7 @@ class _FeatureEntry:
     channel_serializer_fields: dict[str, Any] = field(default_factory=dict)
     channel_overwrite_keys: list[str] = field(default_factory=list)
     download_hook: DownloadHook | None = None
+    url_resolver: UrlResolver | None = None
     media_stream_enricher: MediaStreamEnricher | None = None
 
 
@@ -121,6 +145,7 @@ def register(
     channel_serializer_fields: dict[str, "drf_serializers.Field"] | None = None,
     channel_overwrite_keys: list[str] | None = None,
     download_hook: DownloadHook | None = None,
+    url_resolver: UrlResolver | None = None,
     media_stream_enricher: MediaStreamEnricher | None = None,
 ) -> None:
     """Register a fork feature.
@@ -142,6 +167,9 @@ def register(
     download_hook:
         Object implementing :class:`DownloadHook` that is called around
         each video download.
+    url_resolver:
+        Object implementing :class:`UrlResolver` consulted by the URL parser
+        when a URL does not match any natively-supported domain.
     media_stream_enricher:
         Object implementing :class:`MediaStreamEnricher` that can enrich
         ffprobe-derived stream metadata for display in the UI.
@@ -160,6 +188,7 @@ def register(
             channel_serializer_fields=channel_serializer_fields or {},
             channel_overwrite_keys=list(channel_overwrite_keys or []),
             download_hook=download_hook,
+            url_resolver=url_resolver,
             media_stream_enricher=media_stream_enricher,
         )
     )
@@ -211,6 +240,15 @@ def get_download_hooks() -> list[DownloadHook]:
         entry.download_hook
         for entry in _registry
         if entry.download_hook is not None
+    ]
+
+
+def get_url_resolvers() -> list[UrlResolver]:
+    """URL resolvers from registered features (in registration order)."""
+    return [
+        entry.url_resolver
+        for entry in _registry
+        if entry.url_resolver is not None
     ]
 
 

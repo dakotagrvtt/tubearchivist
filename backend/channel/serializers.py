@@ -68,8 +68,12 @@ class ChannelSerializer(serializers.Serializer):
     channel_tags = serializers.ListField(
         child=serializers.CharField(), required=False
     )
+    # fork: generic_downloads — fallback channels (non-YouTube) may not have
+    # channel_tabs populated; make it optional with a safe default.
     channel_tabs = serializers.ListField(
-        child=serializers.ChoiceField(VideoTypeEnum.values_known())
+        child=serializers.ChoiceField(VideoTypeEnum.values_known()),
+        required=False,
+        default=list,
     )
     _index = serializers.CharField(required=False)
     _score = serializers.IntegerField(required=False)

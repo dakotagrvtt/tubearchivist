@@ -27,6 +27,7 @@ import copy
 import os
 from typing import Any
 
+from common.src.es_connect import ElasticWrap
 from download.src.yt_dlp_base import YtWrap
 from fork_features.audio_tracks.ffmpeg_merge import merge_additional_audio_tracks
 from fork_features.audio_tracks.languages import (
@@ -56,7 +57,33 @@ class AudioTracksDownloadHook:
         downloaded individually in ``post_download``.  This avoids the
         ``check_formats: selected`` issue that causes yt-dlp to silently drop
         extra audio tracks when using a multi-stream format string.
+
+        Non-YouTube videos (those with a ``source_url`` stored in the pending
+        queue) are skipped entirely — audio track discovery always targets a
+        YouTube URL and would produce a noisy, non-fatal error for other
+        platforms.
         """
+        # fork: generic_downloads — skip for non-YouTube videos whose pending
+        # document contains a source_url (e.g. Rumble).  _get_formats
+        # constructs a youtube.com URL which would generate a spurious
+        # "Incomplete YouTube ID" error for non-YouTube IDs.
+        pending_path = f"ta_download/_doc/{youtube_id}"
+        pending_resp, _ = ElasticWrap(pending_path).get(print_error=False)
+        source_url: str | None = (
+            (pending_resp or {}).get("_source") or {}
+        ).get("source_url")
+        if source_url:
+            print(
+                f"[audio_tracks] {youtube_id}: non-YouTube video "
+                f"({source_url!r}), skipping audio track processing"
+            )
+            return {
+                "extra_audio_to_merge": {},
+                "config": config,
+                "multi_language": False,
+                "format_sort": config["downloads"].get("format_sort"),
+            }
+
         def _get_formats(yt_id: str) -> list[dict]:
             extract_obs = {"skip_download": True, "quiet": True}
             yt_extract = YtWrap(extract_obs, config)

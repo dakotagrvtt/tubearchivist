@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 
 from common.src.ta_redis import RedisArchivist
 from download.src.yt_dlp_base import YtWrap
+from fork_features.registry import get_url_resolvers  # fork: generic_downloads
 from video.src.constants import VideoTypeEnum
 
 
@@ -19,6 +20,7 @@ class ParsedURLType(TypedDict):
     url: str
     vid_type: VideoTypeEnum
     limit: NotRequired[int | None]
+    source_url: NotRequired[str]  # fork: generic_downloads — full URL for non-YouTube items
 
 
 class Parser:
@@ -58,6 +60,10 @@ class Parser:
             return self._validate_expected(youtube_id, "video")
 
         if "youtube.com" not in parsed.netloc:
+            # fork: generic_downloads — let registered resolvers handle non-YouTube URLs
+            for resolver in get_url_resolvers():
+                if resolver.can_resolve(parsed.netloc):
+                    return resolver.resolve(parsed.geturl())
             message = f"invalid domain: {parsed.netloc}"
             raise ValueError(message)
 

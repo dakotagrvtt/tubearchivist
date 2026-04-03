@@ -135,10 +135,13 @@ class YoutubeChannel(YouTubeItem):
             "channel_active": False,
             "channel_last_refresh": int(datetime.now().timestamp()),
             "channel_subs": fallback.get("channel_follower_count") or 0,
-            "channel_name": fallback["uploader"],
+            "channel_name": fallback.get("uploader") or fallback.get("channel") or self.youtube_id,
             "channel_id": self.youtube_id,
             "channel_subscribed": False,
             "channel_tags": [],
+            # fork: generic_downloads — channel_tabs required by ChannelSerializer;
+            # non-YouTube fallback channels have no tab discovery, default to empty.
+            "channel_tabs": [],
         }
 
     def get_channel_art(self):
