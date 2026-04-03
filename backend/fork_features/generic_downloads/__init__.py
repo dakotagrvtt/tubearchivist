@@ -17,6 +17,7 @@ Two hooks are registered:
 
 from fork_features.registry import register
 
+from .channel_enricher import GenericChannelFallbackEnricher
 from .downloader import GenericDownloadHook
 from .resolver import GenericUrlResolver
 
@@ -24,4 +25,5 @@ register(
     feature_id="generic_downloads",
     url_resolver=GenericUrlResolver(),
     download_hook=GenericDownloadHook(),
+    channel_fallback_enricher=GenericChannelFallbackEnricher(),
 )

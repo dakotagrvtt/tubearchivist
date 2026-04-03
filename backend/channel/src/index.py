@@ -143,6 +143,10 @@ class YoutubeChannel(YouTubeItem):
             # non-YouTube fallback channels have no tab discovery, default to empty.
             "channel_tabs": [],
         }
+        # fork: generic_downloads — allow features to enrich fallback channel docs
+        from fork_features.registry import get_channel_fallback_enrichers
+        for enricher in get_channel_fallback_enrichers():
+            enricher.enrich(self.json_data, fallback)
 
     def get_channel_art(self):
         """download channel art for new channels"""

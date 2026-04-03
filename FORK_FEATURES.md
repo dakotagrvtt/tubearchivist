@@ -72,6 +72,7 @@ The registry exposes **accessor functions** that upstream integration points cal
 | `get_download_hooks()` | `download/src/yt_dlp_handler.py` → `_dl_single_vid()` | Returns `DownloadHook` objects called before/after each download |
 | `get_url_resolvers()` | `common/src/urlparser.py` → `Parser.process_url()` | Returns `UrlResolver` objects consulted for non-YouTube URLs |
 | `get_media_stream_enrichers()` | `video/src/media_streams.py` → `_extract_audio_metadata()` | Enriches extracted stream metadata for fork-specific UI |
+| `get_channel_fallback_enrichers()` | `channel/src/index.py` → `_video_fallback()` | Enriches minimal channel docs built from video metadata (e.g. adds `channel_source_url`) |
 
 Each upstream file contains a small, explicit integration point. The goal is to keep upstream
 diffs narrow and predictable, even if a given file needs slightly more than 1-3 added lines.
@@ -336,12 +337,14 @@ then re-add the 1-3 fork hook lines.
 
 | File | What was added |
 |---|---|
-| `backend/fork_features/registry.py` | `UrlResolver` protocol + `url_resolver` field + `get_url_resolvers()` accessor |
+| `backend/fork_features/registry.py` | `UrlResolver` + `ChannelFallbackEnricher` protocols; corresponding fields on `_FeatureEntry`; `get_url_resolvers()` + `get_channel_fallback_enrichers()` accessors |
 | `backend/common/src/urlparser.py` | `source_url: NotRequired[str]` on `ParsedURLType`; resolver hook call instead of ValueError for non-YouTube domains |
 | `backend/common/src/index_generic.py` | `self.source_url` attribute on `YouTubeItem`; `build_yt_url()` returns it when set |
 | `backend/download/src/queue.py` | Thread `source_url` through `_process_entry` → `_add_video` → `_parse_video`; persist in pending document |
 | `backend/download/src/yt_dlp_handler.py` | Use `download_target` from hook context in `_dl_single_vid()`; pass `source_url` to `index_new_video()` |
 | `backend/video/src/index.py` | `index_new_video()` accepts `source_url`; guards in `_validate_id`, `_get_ryd_stats`, `_get_sponsorblock` |
+| `backend/channel/src/index.py` | 3-line `get_channel_fallback_enrichers()` hook call at end of `_video_fallback()` |
+| `backend/channel/serializers.py` | Optional `channel_source_url` field on `ChannelSerializer` |
 
 ---
 
@@ -391,9 +394,10 @@ download pipeline site-agnostic.
 
 | File | Description |
 |---|---|
-| `__init__.py` | Calls `register()` with `url_resolver` and `download_hook` |
+| `__init__.py` | Calls `register()` with `url_resolver`, `download_hook`, and `channel_fallback_enricher` |
 | `resolver.py` | `GenericUrlResolver` – accepts any non-YouTube URL; uses yt-dlp to probe the URL and return the canonical video ID + `source_url` |
 | `downloader.py` | `GenericDownloadHook` – in `pre_download`, fetches `source_url` from the ES pending document and returns it as `download_target` so yt-dlp downloads from the correct platform URL |
+| `channel_enricher.py` | `GenericChannelFallbackEnricher` – adds `channel_source_url` to fallback channel docs by reading `channel_url`/`uploader_url` from yt-dlp video metadata; enables Phase 2 subscription scanning |
 
 **No frontend changes** – non-YouTube videos appear in the UI identically to
 YouTube videos.  The user simply pastes a Rumble (or other) URL into the

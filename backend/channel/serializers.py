@@ -75,6 +75,9 @@ class ChannelSerializer(serializers.Serializer):
         required=False,
         default=list,
     )
+    # fork: generic_downloads — original platform channel page URL stored by
+    # GenericChannelFallbackEnricher; absent on YouTube channels.
+    channel_source_url = serializers.CharField(allow_null=True, required=False)
     _index = serializers.CharField(required=False)
     _score = serializers.IntegerField(required=False)
 

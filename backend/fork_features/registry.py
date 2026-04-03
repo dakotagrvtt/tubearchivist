@@ -113,6 +113,24 @@ class MediaStreamEnricher(Protocol):
         ...
 
 
+class ChannelFallbackEnricher(Protocol):
+    """Protocol for enriching channel documents built from video metadata.
+
+    Called inside ``YoutubeChannel._video_fallback()`` after the minimal
+    channel dict has been assembled from yt-dlp video metadata.  Enrichers
+    may mutate *channel_json* in-place to add fork-specific fields (e.g.
+    ``channel_source_url`` for non-YouTube channels).
+    """
+
+    def enrich(
+        self,
+        channel_json: dict[str, Any],
+        video_meta: dict[str, Any],
+    ) -> None:
+        """Mutate *channel_json* in-place using raw yt-dlp *video_meta*."""
+        ...
+
+
 # ---------------------------------------------------------------------------
 # Registry entry
 # ---------------------------------------------------------------------------
@@ -128,6 +146,7 @@ class _FeatureEntry:
     download_hook: DownloadHook | None = None
     url_resolver: UrlResolver | None = None
     media_stream_enricher: MediaStreamEnricher | None = None
+    channel_fallback_enricher: ChannelFallbackEnricher | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +166,7 @@ def register(
     download_hook: DownloadHook | None = None,
     url_resolver: UrlResolver | None = None,
     media_stream_enricher: MediaStreamEnricher | None = None,
+    channel_fallback_enricher: ChannelFallbackEnricher | None = None,
 ) -> None:
     """Register a fork feature.
 
@@ -173,6 +193,10 @@ def register(
     media_stream_enricher:
         Object implementing :class:`MediaStreamEnricher` that can enrich
         ffprobe-derived stream metadata for display in the UI.
+    channel_fallback_enricher:
+        Object implementing :class:`ChannelFallbackEnricher` called inside
+        ``YoutubeChannel._video_fallback()`` to add fork-specific fields to
+        channel documents created from video metadata.
     """
     for existing in _registry:
         if existing.feature_id == feature_id:
@@ -190,6 +214,7 @@ def register(
             download_hook=download_hook,
             url_resolver=url_resolver,
             media_stream_enricher=media_stream_enricher,
+            channel_fallback_enricher=channel_fallback_enricher,
         )
     )
     print(f"[fork_features] registered feature: {feature_id}")
@@ -258,4 +283,13 @@ def get_media_stream_enrichers() -> list[MediaStreamEnricher]:
         entry.media_stream_enricher
         for entry in _registry
         if entry.media_stream_enricher is not None
+    ]
+
+
+def get_channel_fallback_enrichers() -> list[ChannelFallbackEnricher]:
+    """Channel fallback enrichers from registered features."""
+    return [
+        entry.channel_fallback_enricher
+        for entry in _registry
+        if entry.channel_fallback_enricher is not None
     ]
