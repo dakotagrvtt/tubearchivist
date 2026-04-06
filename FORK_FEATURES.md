@@ -178,6 +178,8 @@ well-commented integration points:
 | `frontend/src/pages/Home.tsx` | Optional stream metadata fields added to the shared `StreamType` |
 | `frontend/src/pages/SettingsApplication.tsx` | Import `APP_SETTINGS_SECTIONS` + `.map()` rendering block |
 | `frontend/src/pages/ChannelAbout.tsx` | Import `CHANNEL_SETTINGS_SECTIONS` + `loadAppsettingsConfig` + `.map()` rendering block |
+| `backend/video/views.py` | Import `serve_file_with_range` + three call-site replacements in `VideoStreamView` (mp4, cached transcode, fresh transcode) |
+| `frontend/src/components/VideoPlayer.tsx` | Conditional `#t=` fragment – only appended when a saved position exists |
 | `frontend/src/pages/Video.tsx` | Stream label formatter hook used to render enriched audio stream labels |
 
 ---
@@ -414,6 +416,39 @@ search, thumbnail, subtitles (if the platform provides them), watch history.
 **Phase 2 (not yet implemented):** channel subscriptions for non-YouTube
 sources — would require storing the channel's full URL and adapting
 `remote_query.py`.
+
+---
+
+## Video Seek Fix (`streaming.py`)
+
+**Root cause:** The fork's `VideoStreamView` (`backend/video/views.py`) serves video files using
+Django's `FileResponse`, which does not handle HTTP `Range` requests.  When a browser seeks to
+an arbitrary position in a `<video>` element it sends `Range: bytes=X-Y`.  Without a `206 Partial
+Content` response the server sends the full file from byte 0, causing the player to restart from
+the beginning.  A secondary issue: when no saved playback position exists the `<source>` URL ended
+with `#t=` (empty value), which browsers interpret as `t=0`, further anchoring the start point.
+
+**Fix summary:**
+
+| File | Change |
+|---|---|
+| `backend/fork_features/streaming.py` *(new)* | `serve_file_with_range(request, path)` helper – parses the `Range` header, returns `206 Partial Content` with `Content-Range` when present, always sets `Accept-Ranges: bytes` |
+| `backend/video/views.py` | Import + three one-line call replacements (direct mp4, cached transcode, fresh transcode) |
+| `frontend/src/components/VideoPlayer.tsx` | `#t=${videoSrcProgress}` fragment only appended when `videoSrcProgress !== ''` |
+
+**`serve_file_with_range` API:**
+
+```python
+from fork_features.streaming import serve_file_with_range
+
+# Inside a Django view:
+return serve_file_with_range(request, "/absolute/path/to/file.mp4")
+# Optional content_type kwarg (default "video/mp4"):
+return serve_file_with_range(request, path, content_type="video/mp4")
+```
+
+The helper is intentionally stateless and reusable – any future fork view that needs to stream
+a binary file can import it directly without touching the upstream codebase.
 
 ---
 

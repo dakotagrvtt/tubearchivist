@@ -484,7 +484,7 @@ const VideoPlayer = ({
             muted={isMuted}
           >
             <source
-              src={`${getApiUrl()}${videoUrl}#t=${videoSrcProgress}`}
+              src={`${getApiUrl()}${videoUrl}${videoSrcProgress !== '' ? `#t=${videoSrcProgress}` : ''}`}
               type="video/mp4"
               id="video-source"
             />

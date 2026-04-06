@@ -10,7 +10,7 @@ from playlist.src.index import YoutubePlaylist
 import os
 import subprocess
 
-from django.http import FileResponse
+from fork_features.streaming import serve_file_with_range  # fork: Range-aware streaming
 from rest_framework.response import Response
 from video.serializers import (
     CommentItemSerializer,
@@ -327,9 +327,7 @@ class VideoStreamView(ApiBaseView):
             return Response(error.data, status=404)
 
         if media_url.endswith(".mp4"):
-            response = FileResponse(open(media_path, "rb"))
-            response["Content-Type"] = "video/mp4"
-            return response
+            return serve_file_with_range(request, media_path)  # fork: Range-aware streaming
 
         cache_dir = os.path.join(EnvironmentSettings.CACHE_DIR, "transcode")
         os.makedirs(cache_dir, exist_ok=True)
@@ -339,9 +337,7 @@ class VideoStreamView(ApiBaseView):
 
         # Serve cached transcode immediately if available
         if os.path.exists(cache_path):
-            response = FileResponse(open(cache_path, "rb"))
-            response["Content-Type"] = "video/mp4"
-            return response
+            return serve_file_with_range(request, cache_path)  # fork: Range-aware streaming
 
         # Guard against concurrent transcode of the same video
         if os.path.exists(sentinel_path):
@@ -385,6 +381,4 @@ class VideoStreamView(ApiBaseView):
             error = ErrorResponseSerializer({"error": "transcode failed"})
             return Response(error.data, status=500)
 
-        response = FileResponse(open(cache_path, "rb"))
-        response["Content-Type"] = "video/mp4"
-        return response
+        return serve_file_with_range(request, cache_path)  # fork: Range-aware streaming
