@@ -40,8 +40,17 @@ require_command() {
     command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
 }
 
+compose() {
+    docker compose \
+        --project-directory "$PROJECT_DIR" \
+        -f "$COMPOSE_FILE" \
+        "$@"
+}
+
 require_command git
 require_command docker
+
+docker compose version >/dev/null 2>&1 || fail "docker compose plugin not available"
 
 require_path "$PROJECT_DIR" "project directory"
 require_path "$REPO_DIR" "repository directory"
@@ -74,9 +83,19 @@ git pull --ff-only "$REMOTE" "$BRANCH"
 DEPLOY_COMMIT="$(git rev-parse --short HEAD)"
 log "deploying commit $DEPLOY_COMMIT with compose file $COMPOSE_FILE"
 
-docker compose \
-    --project-directory "$PROJECT_DIR" \
-    -f "$COMPOSE_FILE" \
-    up --build -d
+log "validating compose file"
+compose config --quiet
+
+log "building Docker images without cache"
+compose build --pull --no-cache
+
+log "starting containers from fresh build"
+compose up -d --force-recreate --remove-orphans
+
+log "pruning Docker build cache"
+docker builder prune --force
+
+log "pruning dangling Docker images"
+docker image prune --force
 
 log "deployment finished successfully"

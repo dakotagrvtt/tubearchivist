@@ -19,8 +19,16 @@ Default behavior:
 2. fetch from `origin`
 3. checkout `fork/v0.5.10` if needed
 4. run `git pull --ff-only origin fork/v0.5.10`
-5. run Docker Compose using the external compose file and the parent project
+5. validate the external Compose file
+6. build the application image with `--pull --no-cache`
+7. recreate containers and remove orphaned Compose containers
+8. prune Docker build cache and dangling images
+9. run Docker Compose using the external compose file and the parent project
    directory so `build: ./tubearchivist` resolves correctly
+
+The Docker cleanup only targets Docker build cache and dangling images. It does
+not remove named volumes, so Tube Archivist data mounted at `/youtube`,
+`/cache`, Redis, and Elasticsearch remains intact.
 
 Example:
 
