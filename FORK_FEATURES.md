@@ -295,43 +295,59 @@ That's it — the upstream pages pick up the new sections automatically.
 
 ## Staying In Sync With Upstream
 
-> For the full branch policy and current branch meanings, see
+> For the full branch policy, branch meanings, and the recurring upgrade workflow, see
 > [BRANCHING.md](./BRANCHING.md).
 
 ### Branch strategy
 
-Fork features live on branches named `fork/<upstream-tag>`, e.g. `fork/v0.5.9`. Each branch is
-based on a stable upstream tag with the fork-features commit(s) applied on top.
+`fork/main` is a permanent rolling integration branch that always contains every fork feature.
+Stable release branches named `fork/<upstream-tag>` (e.g. `fork/v0.5.10`) are cut from
+`fork/main` after each upstream release is merged and tested.
 
 ### Updating to a new upstream release
 
 ```bash
-# 1. Fetch new upstream tags
+# 0. Make sure the working tree is clean and on fork/main
 git fetch upstream --tags
+git checkout fork/main
+git pull --ff-only
 
-# 2. Create a new fork branch from the new tag
-git checkout -b fork/v0.6.0 v0.6.0
+# 1. Merge the new upstream tag into fork/main (one merge = one conflict round)
+git merge --no-ff v0.6.0 -m "Merge upstream v0.6.0 into fork/main"
 
-# 3. Cherry-pick the fork-features commit(s) from the old branch
-git cherry-pick fork/v0.5.9          # or a specific commit hash
-
-# 4. Resolve any conflicts (usually just the hook lines in upstream files)
-#    For each conflict: keep the upstream change AND restore the hook line.
+# 2. If conflicts appear, they will only be in the ~14 integration files listed
+#    in "Upstream Files Touched" above. Resolution rule for every conflict:
+#      keep upstream's change AND keep the fork hook line(s).
+git diff --name-only --diff-filter=U   # list conflicted files
+# edit each file, then:
 git add <resolved-files>
-git cherry-pick --continue
+git commit                             # completes the merge
 
-# 5. Test, then push
-git push origin fork/v0.6.0
+# 3. Smoke-test (build backend + frontend, run a download, play a video)
+
+# 4. Cut the new release branch from fork/main
+git checkout -b fork/v0.6.0
+git push -u origin fork/v0.6.0
+
+# 5. Return to fork/main; it stays as the integration base for the next release
+git checkout fork/main
+git push origin fork/main
 ```
+
+No cherry-picking, no per-commit conflict replays — the merge is resolved exactly once.
 
 ### Where conflicts can occur
 
-Conflicts will almost always be limited to the small hook lines in the integration files listed
-above. The bulk of your feature code in `backend/fork_features/` and
-`frontend/src/fork_features/` should have **no conflicts at all**.
+Conflicts will only ever appear in the integration files listed in "Upstream Files Touched"
+above. All code under `backend/fork_features/` and `frontend/src/fork_features/` is
+self-contained and should have **no conflicts at all**.
 
-For each conflict, the resolution is always the same pattern: keep whatever upstream changed,
-then re-add the 1-3 fork hook lines.
+For each conflict the resolution is always the same: keep upstream's change, then restore the
+1–3 fork hook lines. Use `git checkout --theirs <file>` as a starting point when upstream
+rewrote a whole function, then re-add the hook lines manually.
+
+See [BRANCHING.md](./BRANCHING.md) for a conflict-resolution tip sheet and the full branch
+lifecycle policy.
 
 ---
 

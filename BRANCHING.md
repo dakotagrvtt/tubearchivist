@@ -23,111 +23,56 @@ assistants:
 
 ## Current Branches
 
-As of the current documented state:
+- `fork/main`
+  - **permanent rolling integration branch** — always contains every fork feature
+  - upstream releases are merged here first; new release branches are cut from here
+  - use this branch for day-to-day fork development
 
 - `fork/v0.5.10`
-  - current fork release branch
-  - contains the modular fork-features framework
-  - contains the audio-tracks feature and player-label metadata restoration
-  - intended to be the stable deployment branch right now
+  - frozen stable release branch — rollback point for the v0.5.10 deployment
+  - do not commit to it directly; use `fork/main` and cut a new release branch
 
-- `resync/upstream-develop`
-  - historical/upstream-resync working branch
-  - used while integrating or replaying fork changes onto newer upstream code
-  - not intended as the main deployment target
-
-- `develop`
-  - fork-side development branch currently present on `origin`
-  - should be treated as a general development/integration branch, not the
-    only source of truth for deployment
+- `develop` / `resync/upstream-develop`
+  - legacy branches left over from earlier sync work
+  - superseded by `fork/main`; safe to delete when no longer needed
 
 - `origin/master`
-  - exists remotely, but should not be assumed to be the preferred deployment
-    branch for fork-specific work
+  - exists remotely; not the preferred deployment branch for fork-specific work
 
 - `upstream/develop` and `upstream/master`
-  - original project tracking refs
-  - used as the source of incoming upstream updates
+  - original project tracking refs used as the source for upstream tag merges
 
 ---
 
 ## Branch Roles
 
-The recommended meaning of branch names in this fork is:
+### 1) Rolling integration branch — `fork/main`
 
-### 1) Stable fork release branches
+- permanent; always contains every fork feature
+- upstream releases are merged here first; conflict resolution happens here
+- new features and fixes are developed here before release branching
+- may be temporarily unstable; do not deploy directly from it
 
-Format:
+### 2) Stable fork release branches — `fork/vX.Y.Z`
 
-- `fork/v0.5.10`
-- `fork/v0.5.11`
-- etc.
+Format: `fork/v0.5.10`, `fork/v0.6.0`, etc.
 
-Purpose:
+- cut from `fork/main` after each upstream release is merged and tested
+- frozen once created; do not commit to them after deployment
+- best branch for production deploys and rollback points
+- safe to clone from on another machine
 
-- stable, deployable branch
-- tied to a specific upstream version/tag or release baseline
-- safe place to clone from on another machine
-- best branch for production deployments and rollback points
+### 3) Short-lived work branches
 
-Rules:
+Format: `fix/<topic>`, `feat/<topic>`, `docs/<topic>`
 
-- do not use these as scratch branches
-- only merge/cherry-pick tested fork changes onto them
-- prefer deploying from these branches or from tags created on top of them
+- focused work for a single change
+- merged or cherry-picked back into `fork/main`
 
-### 2) Rolling integration branch
+### 4) Resync / migration branches — `resync/*`
 
-Recommended future name:
-
-- `fork/main`
-
-or, if you want to stay closer to TubeArchivist naming:
-
-- `fork/develop`
-
-Purpose:
-
-- ongoing integration branch for fork work
-- where upstream changes are merged/rebased in first
-- where new fork features are developed before release branching
-
-Rules:
-
-- can move frequently
-- may be temporarily unstable
-- should not be the only deployment branch
-
-### 3) Resync / migration branches
-
-Format:
-
-- `resync/upstream-develop`
-- `resync/<purpose>`
-
-Purpose:
-
-- temporary branches used to replay, compare, or resync fork changes against
-  upstream
-- useful during large refactors or when reconstructing a clean fork overlay
-
-Rules:
-
-- assume temporary unless explicitly promoted
-- do not treat as permanent deployment targets
-
-### 4) Short-lived work branches
-
-Format:
-
-- `fix/<topic>`
-- `feat/<topic>`
-- `docs/<topic>`
-
-Purpose:
-
-- focused work branches for a specific change
-- merged or cherry-picked into the rolling integration branch
+- temporary; used to replay or compare changes during large refactors
+- assume temporary unless explicitly promoted to another role
 
 ---
 
@@ -135,57 +80,71 @@ Purpose:
 
 ### Upstream sync workflow
 
-1. fetch latest upstream changes
-2. update the rolling fork integration branch with the new upstream code
-3. **merge the previous stable fork branch into `develop`** so that all
-   fork-specific changes are present (this is the step most often missed —
-   without it, the new release branch will not contain your fork features)
-4. resolve any merge conflicts and test the fork features on `develop`
-5. cut a new stable `fork/vX.Y.Z` branch once validated
-
-Example (using `develop` as the current rolling integration branch; update to
-`fork/main` once that branch is created per the cleanup plan):
+The goal is to do conflict resolution exactly once per upstream release.
+`fork/main` always contains every fork feature, so merging a new upstream tag
+into it is sufficient — there is no need to replay fork commits or
+cherry-pick.
 
 ```bash
+# 0. Clean working tree, on fork/main
 git fetch upstream --tags
-git checkout develop
+git checkout fork/main
+git pull --ff-only
 
-# Step 1: bring in the latest upstream code
-git merge upstream/develop
-# or: git rebase upstream/develop
+# 1. Merge the new upstream stable TAG (not a branch) into fork/main
+git merge --no-ff v0.6.0 -m "Merge upstream v0.6.0 into fork/main"
 
-# Step 2: bring in your fork-specific work from the previous release branch
-# (skip if those commits were already merged into develop earlier)
-git merge fork/v0.5.10
+# 2. Resolve conflicts — they will only appear in the ~14 integration files
+#    listed in FORK_FEATURES.md "Upstream Files Touched".
+#    Rule: keep upstream's change AND keep the fork hook line(s).
+git diff --name-only --diff-filter=U   # see only conflicted files
+# edit, then:
+git add <resolved-files>
+git commit                             # completes the merge
 
-# Resolve any conflicts, then test
+# 3. Smoke-test (build, run a download, play a video)
+
+# 4. Cut the new stable release branch
+git checkout -b fork/v0.6.0
+git push -u origin fork/v0.6.0
+
+# 5. Return to fork/main for ongoing development
+git checkout fork/main
+git push origin fork/main
 ```
 
-Then, after validation:
+**Why merging a tag beats cherry-picking:** cherry-picking N commits means
+resolving the same hook-line conflicts up to N times. A single `git merge
+<tag>` resolves everything once.
 
-```bash
-git checkout -b fork/v0.5.11
-git push origin fork/v0.5.11
-```
-
-> **Note:** If `develop` did not already contain the fork changes from
-> `fork/v0.5.10`, skipping the merge step above is why a new release branch
-> would be missing those features.
+**Conflict-resolution tips:**
+- `git diff --name-only --diff-filter=U` lists only conflicted files.
+- `git checkout --theirs <file>` is fast when upstream rewrote a whole
+  function — grab their version, then re-add the 1–3 fork hook lines.
+- Files under `backend/fork_features/` and `frontend/src/fork_features/` are
+  fork-only and should never conflict; if they do, fork code has leaked
+  outside the isolation directories.
 
 ### Hotfix workflow
 
-If a deployed fork release needs a small fix:
+If the deployed `fork/vX.Y.Z` branch needs a small fix:
 
 ```bash
 git checkout fork/v0.5.10
-git checkout -b fix/player-labels
+git checkout -b fix/my-fix
 # make and test the fix
 git checkout fork/v0.5.10
-git merge --ff-only fix/player-labels
+git merge --ff-only fix/my-fix
 git push origin fork/v0.5.10
 ```
 
-Then port the same fix back to the rolling integration branch if needed.
+Then port the fix back to `fork/main` if it is still applicable:
+
+```bash
+git checkout fork/main
+git cherry-pick <fix-commit>
+git push origin fork/main
+```
 
 ---
 
@@ -251,19 +210,14 @@ git push --force-with-lease origin fork/v0.5.10
 - Keep at least one **stable versioned fork branch** for production use.
 - Keep fork-only behavior modular under `backend/fork_features/` and
   `frontend/src/fork_features/`.
-- Do upstream integration work on a rolling branch first.
+- Do upstream integration work on `fork/main` first.
 - Promote tested changes to a stable `fork/vX.Y.Z` branch afterward.
-- If needed, create release tags on top of stable fork branches for especially
-  important deployment points.
 
 ---
 
-## Suggested Next Cleanup
+## Cleanup Status
 
-To simplify the repo over time, consider standardizing on:
-
-- `fork/main` → rolling integration branch
-- `fork/vX.Y.Z` → stable deployment branches
-- `resync/*` → temporary migration/resync branches only
-
-This is not required immediately, but it is the clearest long-term layout.
+- [x] `fork/main` established as the rolling integration branch
+- [x] `fork/vX.Y.Z` as stable deployment branches
+- [ ] Delete legacy `develop` and `resync/upstream-develop` once confirmed no
+      longer needed
