@@ -10,10 +10,13 @@ Usage (in an upstream view):
     return serve_file_with_range(request, "/absolute/path/to/file.mp4")
 """
 
+import asyncio
 import os
 import re
 
-from django.http import FileResponse, HttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
+
+_CHUNK_SIZE = 64 * 1024
 
 
 def serve_file_with_range(request, file_path: str, content_type: str = "video/mp4"):
@@ -60,21 +63,38 @@ def serve_file_with_range(request, file_path: str, content_type: str = "video/mp
             return _range_not_satisfiable(file_size)
 
         length = last_byte - first_byte + 1
-
-        f = open(file_path, "rb")  # noqa: WPS515  – closed by StreamingHttpResponse
-        f.seek(first_byte)
-
-        response = FileResponse(f, status=206, content_type=content_type)
+        response = StreamingHttpResponse(
+            _iter_file_range(file_path, first_byte, length),
+            status=206,
+            content_type=content_type,
+        )
         response["Content-Range"] = f"bytes {first_byte}-{last_byte}/{file_size}"
         response["Content-Length"] = length
         response["Accept-Ranges"] = "bytes"
         return response
 
     # No (or unparseable) Range header – serve the full file.
-    response = FileResponse(open(file_path, "rb"), content_type=content_type)
+    response = StreamingHttpResponse(
+        _iter_file_range(file_path, 0, file_size),
+        content_type=content_type,
+    )
     response["Content-Length"] = file_size
     response["Accept-Ranges"] = "bytes"
     return response
+
+
+async def _iter_file_range(file_path: str, start: int, length: int):
+    """Yield a file byte range without blocking the ASGI event loop."""
+    with open(file_path, "rb") as handle:
+        await asyncio.to_thread(handle.seek, start)
+        remaining = length
+        while remaining > 0:
+            chunk_size = min(_CHUNK_SIZE, remaining)
+            chunk = await asyncio.to_thread(handle.read, chunk_size)
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
 
 
 def _range_not_satisfiable(file_size: int) -> HttpResponse:
