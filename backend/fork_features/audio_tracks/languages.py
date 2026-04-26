@@ -27,12 +27,11 @@ def is_audio_multistream_enabled(
 ) -> bool:
     """Return True when audio_multistreams is effectively enabled."""
     overwrites = channel_overwrites.get(channel_id, {})
-    if (
-        "audio_multistreams" in overwrites
-        and overwrites["audio_multistreams"] is not None
-    ):
+    if "audio_multistreams" in overwrites and overwrites["audio_multistreams"] is not None:
         return bool(overwrites["audio_multistreams"])
-    return bool(config["downloads"].get("audio_multistreams"))
+
+    downloads = config["downloads"]
+    return bool(downloads.get("audio_multistreams"))
 
 
 def get_audio_languages(

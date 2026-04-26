@@ -276,7 +276,7 @@ class YoutubeChannel(YouTubeItem):
         valid_keys = [
             "download_format",
             "download_container",
-            "audio_multistream",
+            "audio_multistreams",
             "audio_languages",
             "autodelete_days",
             "index_playlists",

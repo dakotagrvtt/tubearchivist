@@ -64,11 +64,14 @@ class DownloadHook(Protocol):
         channel_id: str,
         config: dict[str, Any],
         channel_overwrites: dict[str, dict[str, Any]],
+        pending_video: dict[str, Any],
     ) -> dict[str, Any]:
         """Called with the assembled yt-dlp obs *before* the download starts.
 
         Returns a *context* dict that is passed back verbatim to
-        ``post_download``.
+        ``post_download``. ``pending_video`` contains the pending queue
+        document from Elasticsearch, so hooks can avoid duplicate datastore
+        lookups.
         """
         ...
 

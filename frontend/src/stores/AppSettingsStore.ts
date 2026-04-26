@@ -23,7 +23,7 @@ export const useAppSettingsStore = create<AppSettingsState>(set => ({
       format: null,
       format_sort: null,
       add_metadata: false,
-      audio_multistream: false,
+      audio_multistreams: false,
       audio_languages: null,
       subtitle: null,
       subtitle_source: null,

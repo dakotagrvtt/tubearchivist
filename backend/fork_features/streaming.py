@@ -30,24 +30,56 @@ def serve_file_with_range(request, file_path: str, content_type: str = "video/mp
     range_header = request.META.get("HTTP_RANGE", "").strip()
 
     if range_header:
-        match = re.match(r"bytes=(\d+)-(\d*)", range_header)
-        if match:
-            first_byte = int(match.group(1))
-            last_byte = int(match.group(2)) if match.group(2) else file_size - 1
-            last_byte = min(last_byte, file_size - 1)
-            length = last_byte - first_byte + 1
+        # Only single byte ranges are supported (RFC 7233). Reject malformed
+        # or unsupported values with 416 so clients can retry correctly.
+        if "," in range_header:
+            return _range_not_satisfiable(file_size)
 
-            f = open(file_path, "rb")  # noqa: WPS515  – closed by StreamingHttpResponse
-            f.seek(first_byte)
+        match = re.match(r"^bytes=(\d*)-(\d*)$", range_header)
+        if not match:
+            return _range_not_satisfiable(file_size)
 
-            response = FileResponse(f, status=206, content_type=content_type)
-            response["Content-Range"] = f"bytes {first_byte}-{last_byte}/{file_size}"
-            response["Content-Length"] = length
-            response["Accept-Ranges"] = "bytes"
-            return response
+        start_str, end_str = match.groups()
+        if not start_str and not end_str:
+            return _range_not_satisfiable(file_size)
+
+        if start_str:
+            first_byte = int(start_str)
+            if first_byte >= file_size:
+                return _range_not_satisfiable(file_size)
+            last_byte = int(end_str) if end_str else file_size - 1
+        else:
+            suffix_len = int(end_str)
+            if suffix_len <= 0:
+                return _range_not_satisfiable(file_size)
+            first_byte = max(file_size - suffix_len, 0)
+            last_byte = file_size - 1
+
+        last_byte = min(last_byte, file_size - 1)
+        if first_byte > last_byte:
+            return _range_not_satisfiable(file_size)
+
+        length = last_byte - first_byte + 1
+
+        f = open(file_path, "rb")  # noqa: WPS515  – closed by StreamingHttpResponse
+        f.seek(first_byte)
+
+        response = FileResponse(f, status=206, content_type=content_type)
+        response["Content-Range"] = f"bytes {first_byte}-{last_byte}/{file_size}"
+        response["Content-Length"] = length
+        response["Accept-Ranges"] = "bytes"
+        return response
 
     # No (or unparseable) Range header – serve the full file.
     response = FileResponse(open(file_path, "rb"), content_type=content_type)
     response["Content-Length"] = file_size
+    response["Accept-Ranges"] = "bytes"
+    return response
+
+
+def _range_not_satisfiable(file_size: int) -> HttpResponse:
+    """Return 416 response for malformed or unsupported range requests."""
+    response = HttpResponse(status=416)
+    response["Content-Range"] = f"bytes */{file_size}"
     response["Accept-Ranges"] = "bytes"
     return response

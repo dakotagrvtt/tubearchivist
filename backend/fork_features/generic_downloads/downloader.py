@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from common.src.es_connect import ElasticWrap
-
 
 class GenericDownloadHook:
     """Use the stored ``source_url`` as the yt-dlp download target.
@@ -34,22 +32,14 @@ class GenericDownloadHook:
         channel_id: str,
         config: dict[str, Any],
         channel_overwrites: dict[str, dict[str, Any]],
+        pending_video: dict[str, Any],
     ) -> dict[str, Any]:
-        """Look up ``source_url`` from the pending queue and return as ``download_target``.
-
-        Queries Elasticsearch for the pending document identified by
-        *youtube_id*.  If the document has a ``source_url`` field the hook
-        returns ``{"download_target": source_url}`` so the upstream downloader
-        can use it as the actual yt-dlp URL.
+        """Return ``download_target`` from pending metadata when available.
 
         For YouTube videos (no ``source_url`` stored) the returned dict is
         empty and the upstream code falls back to the bare *youtube_id*.
         """
-        path = f"ta_download/_doc/{youtube_id}"
-        resp, _ = ElasticWrap(path).get(print_error=False)
-        source_url: str | None = (
-            (resp or {}).get("_source") or {}
-        ).get("source_url")
+        source_url: str | None = pending_video.get("source_url")
 
         if source_url:
             print(

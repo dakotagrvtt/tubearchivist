@@ -27,7 +27,6 @@ import copy
 import os
 from typing import Any
 
-from common.src.es_connect import ElasticWrap
 from download.src.yt_dlp_base import YtWrap
 from fork_features.audio_tracks.ffmpeg_merge import merge_additional_audio_tracks
 from fork_features.audio_tracks.languages import (
@@ -48,6 +47,7 @@ class AudioTracksDownloadHook:
         channel_id: str,
         config: dict[str, Any],
         channel_overwrites: dict[str, dict[str, Any]],
+        pending_video: dict[str, Any],
     ) -> dict[str, Any]:
         """Mutate *obs* for multi-audio and return context for post_download.
 
@@ -67,11 +67,7 @@ class AudioTracksDownloadHook:
         # document contains a source_url (e.g. Rumble).  _get_formats
         # constructs a youtube.com URL which would generate a spurious
         # "Incomplete YouTube ID" error for non-YouTube IDs.
-        pending_path = f"ta_download/_doc/{youtube_id}"
-        pending_resp, _ = ElasticWrap(pending_path).get(print_error=False)
-        source_url: str | None = (
-            (pending_resp or {}).get("_source") or {}
-        ).get("source_url")
+        source_url: str | None = pending_video.get("source_url")
         if source_url:
             print(
                 f"[audio_tracks] {youtube_id}: non-YouTube video "

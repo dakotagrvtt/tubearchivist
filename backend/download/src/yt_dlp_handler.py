@@ -183,7 +183,9 @@ class VideoDownloader(DownloaderBase):
             format_sort = self.config["downloads"]["format_sort"]
             format_sort_list = [i.strip() for i in format_sort.split(",")]
             self.obs["format_sort"] = format_sort_list
-        if self.config["downloads"].get("audio_multistream"):
+        if self._resolve_audio_multistreams(
+            self.config.get("downloads", {}), {}
+        ):
             self.obs["audio_multistreams"] = True
         if self.config["downloads"]["limit_speed"]:
             self.obs["ratelimit"] = (
@@ -448,13 +450,17 @@ class VideoDownloader(DownloaderBase):
             obs["outtmpl"] = (
                 self.CACHE_DIR + f"/download/%(id)s.{container}"
             )
-        if overwrites and overwrites.get("audio_multistream") is not None:
-            obs["audio_multistreams"] = overwrites.get("audio_multistream")
+        if overwrites:
+            audio_multistreams = self._resolve_audio_multistreams(
+                self.config.get("downloads", {}), overwrites
+            )
+            if audio_multistreams is not None:
+                obs["audio_multistreams"] = audio_multistreams
 
     def _get_audio_languages(self, channel_id: str) -> list[str] | None:
         """get audio languages from config or channel overwrites.
 
-        Returns None if audio_multistream is not effectively enabled — audio_languages
+        Returns None if audio_multistreams is not effectively enabled — audio_languages
         alone must not force multi-track downloads (Option A / strict mode).
         """
         if not self._is_audio_multistream_enabled(channel_id):
@@ -475,11 +481,35 @@ class VideoDownloader(DownloaderBase):
         ]
 
     def _is_audio_multistream_enabled(self, channel_id: str) -> bool:
-        """return True if audio_multistream is enabled globally or via channel overwrite"""
+        """return True if audio_multistreams is enabled globally or via channel overwrite"""
         overwrites = self.channel_overwrites.get(channel_id, {})
-        if "audio_multistream" in overwrites and overwrites["audio_multistream"] is not None:
-            return bool(overwrites["audio_multistream"])
-        return bool(self.config["downloads"].get("audio_multistream"))
+        return bool(
+            self._resolve_audio_multistreams(
+                self.config.get("downloads", {}), overwrites
+            )
+        )
+
+    @staticmethod
+    def _resolve_audio_multistreams(
+        downloads: dict, overwrites: dict
+    ) -> bool | None:
+        """Resolve audio_multistreams from channel overwrites or app config."""
+        if "audio_multistreams" in overwrites:
+            value = overwrites.get("audio_multistreams")
+            if value is not None:
+                return bool(value)
+
+        if "audio_multistreams" in downloads:
+            return bool(downloads.get("audio_multistreams"))
+
+        return None
+
+    @staticmethod
+    def _get_pending_video(youtube_id: str) -> dict:
+        """Load pending queue document for hook context."""
+        path = f"ta_download/_doc/{youtube_id}"
+        response, _ = ElasticWrap(path).get(print_error=False)
+        return ((response or {}).get("_source") or {}).copy()
 
     @staticmethod
     def _discover_audio_languages(formats: list[dict]) -> list[str]:
@@ -500,6 +530,7 @@ class VideoDownloader(DownloaderBase):
         obs = self.obs.copy()
         self._set_overwrites(obs, channel_id)
         dl_cache = os.path.join(self.CACHE_DIR, "download")
+        pending_video = self._get_pending_video(youtube_id)
 
         # Run pre-download hooks (e.g. multi-audio format selection).
         hooks = get_download_hooks()
@@ -511,6 +542,7 @@ class VideoDownloader(DownloaderBase):
                 channel_id,
                 self.config,
                 self.channel_overwrites,
+                pending_video,
             )
             hook_contexts.append(ctx)
 
@@ -524,15 +556,12 @@ class VideoDownloader(DownloaderBase):
 
         success, message = YtWrap(obs, self.config).download(download_target)
 
-        if not success:
-            self._handle_error(youtube_id, message)
-            return False
-
         # Run post-download hooks regardless of success so they can clean up.
         for hook, ctx in zip(hooks, hook_contexts):
             hook.post_download(ctx, youtube_id, dl_cache, success)
 
         if not success:
+            self._handle_error(youtube_id, message)
             return False
 
         if self.obs["writethumbnail"]:

@@ -74,7 +74,7 @@ const ChannelAbout = () => {
         setChannelResponse(channelResponse);
         setDownloadFormat(channelResponseData?.channel_overwrites?.download_format ?? null);
         setAudioMultistreams(
-          channelResponseData?.channel_overwrites?.audio_multistream ?? null,
+          channelResponseData?.channel_overwrites?.audio_multistreams ?? null,
         );
         setAudioMultistreamsWarning(null);
         setAudioLanguages(channelResponseData?.channel_overwrites?.audio_languages ?? null);
@@ -114,7 +114,7 @@ const ChannelAbout = () => {
       return;
     }
     setAudioMultistreamsWarning(null);
-    if (configKey === 'audio_multistream') {
+    if (configKey === 'audio_multistreams') {
       setAudioMultistreams(configValue === null ? null : Boolean(configValue));
     }
     setRefresh(true);
@@ -330,7 +330,7 @@ const ChannelAbout = () => {
                   <p>Enable multistream audio</p>
                 </div>
                 <ToggleConfig
-                  name="audio_multistream"
+                  name="audio_multistreams"
                   value={audioMultistreams ?? false}
                   helperText={
                     audioMultistreams
@@ -339,7 +339,7 @@ const ChannelAbout = () => {
                   }
                   updateCallback={handleUpdateConfig}
                   resetCallback={() => {
-                    handleUpdateConfig('audio_multistream', null);
+                    handleUpdateConfig('audio_multistreams', null);
                     setAudioMultistreams(null);
                   }}
                 />

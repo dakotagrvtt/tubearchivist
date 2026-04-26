@@ -93,7 +93,7 @@ export type DownloadsType = {
   format: boolean;
   format_sort: boolean;
   add_metadata: boolean;
-  audio_multistream: boolean;
+  audio_multistreams: boolean;
   subtitle: boolean;
   subtitle_source: boolean;
   subtitle_index: boolean;

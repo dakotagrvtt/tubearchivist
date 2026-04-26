@@ -22,7 +22,7 @@ const AudioTracksAppSection = ({ appSettingsConfig, onRefresh }: AppSettingsSect
 
   // Sync local state when the parent config refreshes.
   useEffect(() => {
-    setAudioMultistreams(appSettingsConfig.downloads.audio_multistreams || false);
+    setAudioMultistreams(appSettingsConfig.downloads.audio_multistreams ?? false);
     setAudioLanguages(appSettingsConfig.downloads.audio_languages || null);
     setAudioWarning(null);
   }, [appSettingsConfig]);

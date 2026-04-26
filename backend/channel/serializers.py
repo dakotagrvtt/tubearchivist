@@ -21,7 +21,7 @@ class ChannelOverwriteSerializer(
     download_container = serializers.ChoiceField(
         choices=["mp4", "mkv"], required=False, allow_null=True
     )
-    audio_multistream = serializers.BooleanField(
+    audio_multistreams = serializers.BooleanField(
         required=False, allow_null=True
     )
     audio_languages = serializers.CharField(required=False, allow_null=True)
