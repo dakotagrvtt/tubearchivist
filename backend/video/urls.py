@@ -31,6 +31,11 @@ urlpatterns = [
         name="api-video-stream",
     ),
     path(
+        "<slug:video_id>/stream/status/",
+        views.VideoPlaybackStatusView.as_view(),
+        name="api-video-stream-status",
+    ),
+    path(
         "<slug:video_id>/similar/",
         views.VideoSimilarView.as_view(),
         name="api-video-similar",

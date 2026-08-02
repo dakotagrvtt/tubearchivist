@@ -17,7 +17,7 @@ import useIsAdmin from '../functions/useIsAdmin';
 import InputConfig from '../components/InputConfig';
 import ToggleConfig from '../components/ToggleConfig';
 import { useUserConfigStore } from '../stores/UserConfigStore';
-import { ApiResponseType } from '../functions/APIClient';
+import { ApiResponseType, getApiErrorMessage } from '../functions/APIClient';
 import { CHANNEL_SETTINGS_SECTIONS } from '../fork_features/registry';
 
 export type ChannelBaseOutletContextType = {
@@ -47,14 +47,12 @@ const ChannelAbout = () => {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [reindex, setReindex] = useState(false);
   const [refresh, setRefresh] = useState(true);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   const [channelResponse, setChannelResponse] = useState<ApiResponseType<ChannelResponseType>>();
   const [appSettingsConfig, setAppSettingsConfig] = useState<AppSettingsConfigType | null>(null);
 
   const [downloadFormat, setDownloadFormat] = useState<string | null>(null);
-  const [audioMultistreams, setAudioMultistreams] = useState<boolean | null>(null);
-  const [audioMultistreamsWarning, setAudioMultistreamsWarning] = useState<string | null>(null);
-  const [audioLanguages, setAudioLanguages] = useState<string | null>(null);
   const [autoDeleteAfter, setAutoDeleteAfter] = useState<number | null>(null);
   const [indexPlaylists, setIndexPlaylists] = useState(false);
   const [enableSponsorblock, setEnableSponsorblock] = useState<boolean | null>(null);
@@ -73,11 +71,6 @@ const ChannelAbout = () => {
 
         setChannelResponse(channelResponse);
         setDownloadFormat(channelResponseData?.channel_overwrites?.download_format ?? null);
-        setAudioMultistreams(
-          channelResponseData?.channel_overwrites?.audio_multistreams ?? null,
-        );
-        setAudioMultistreamsWarning(null);
-        setAudioLanguages(channelResponseData?.channel_overwrites?.audio_languages ?? null);
         setAutoDeleteAfter(channelResponseData?.channel_overwrites?.autodelete_days ?? null);
         setIndexPlaylists(channelResponseData?.channel_overwrites?.index_playlists ?? false);
         setEnableSponsorblock(
@@ -108,16 +101,17 @@ const ChannelAbout = () => {
     configValue: string | boolean | number | null,
   ) => {
     if (!channel) return;
-    const response = await updateChannelOverwrites(channel.channel_id, configKey, configValue);
-    if (response?.error?.error) {
-      setAudioMultistreamsWarning(response.error.error);
-      return;
+    try {
+      const response = await updateChannelOverwrites(channel.channel_id, configKey, configValue);
+      if (response?.error?.error) {
+        throw new Error(response.error.error);
+      }
+      setUpdateError(null);
+      setRefresh(true);
+    } catch (error) {
+      setUpdateError(getApiErrorMessage(error, 'Failed to update channel settings.'));
+      throw error;
     }
-    setAudioMultistreamsWarning(null);
-    if (configKey === 'audio_multistreams') {
-      setAudioMultistreams(configValue === null ? null : Boolean(configValue));
-    }
-    setRefresh(true);
   };
 
   const handleToggleSponsorBlock = async (isEnabled: boolean) => {
@@ -269,6 +263,7 @@ const ChannelAbout = () => {
           <div className="info-box">
             <div className="info-box-item">
               <h2>Channel Customization</h2>
+              {updateError && <p className="settings-error">{updateError}</p>}
               {userConfig.show_help_text && (
                 <div className="help-text">
                   <ul>
@@ -292,10 +287,6 @@ const ChannelAbout = () => {
                     </li>
                     <li>
                       Once you click on <i>Configure</i>, this will activate sponsorblock settings.
-                    </li>
-                    <li>
-                      Enable multistream audio to download all available audio languages for this
-                      channel.
                     </li>
                   </ul>
                 </div>
@@ -325,43 +316,6 @@ const ChannelAbout = () => {
                   />
                 ))}
 
-              <div className="settings-box-wrapper">
-                <div>
-                  <p>Enable multistream audio</p>
-                </div>
-                <ToggleConfig
-                  name="audio_multistreams"
-                  value={audioMultistreams ?? false}
-                  helperText={
-                    audioMultistreams
-                      ? 'If multiple audio tracks are selected/found, Tube Archivist will automatically save as mkv. Single-audio downloads keep the selected/effective container.'
-                      : 'Enable to include multiple audio languages when available for this channel.'
-                  }
-                  updateCallback={handleUpdateConfig}
-                  resetCallback={() => {
-                    handleUpdateConfig('audio_multistreams', null);
-                    setAudioMultistreams(null);
-                  }}
-                />
-                {audioMultistreamsWarning && (
-                  <p className="settings-error">{audioMultistreamsWarning}</p>
-                )}
-              </div>
-              {audioMultistreams && (
-                <div className="settings-box-wrapper">
-                  <div>
-                    <p>Audio Languages</p>
-                  </div>
-                  <InputConfig
-                    type="text"
-                    name="audio_languages"
-                    value={audioLanguages}
-                    setValue={setAudioLanguages}
-                    oldValue={channel.channel_overwrites?.audio_languages ?? null}
-                    updateCallback={handleUpdateConfig}
-                  />
-                </div>
-              )}
               <div className="settings-box-wrapper">
                 <div>
                   <p>

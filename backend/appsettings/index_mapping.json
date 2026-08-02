@@ -55,6 +55,15 @@
                         "download_format": {
                             "type": "text"
                         },
+                        "download_container": {
+                            "type": "keyword"
+                        },
+                        "audio_multistreams": {
+                            "type": "boolean"
+                        },
+                        "audio_languages": {
+                            "type": "keyword"
+                        },
                         "autodelete_days": {
                             "type": "long"
                         },
@@ -340,6 +349,21 @@
                             "index": false
                         },
                         "type": {
+                            "type": "keyword",
+                            "index": false
+                        },
+                        "language": {
+                            "type": "keyword",
+                            "index": false
+                        },
+                        "title": {
+                            "type": "keyword",
+                            "index": false
+                        },
+                        "channels": {
+                            "type": "short"
+                        },
+                        "channel_layout": {
                             "type": "keyword",
                             "index": false
                         },

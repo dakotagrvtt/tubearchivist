@@ -12,7 +12,10 @@ type AudioLanguageSelectorProps = {
   name: string;
   value: string | null;
   oldValue: string | null | undefined;
-  updateCallback: (name: string, value: string | boolean | number | null) => void;
+  updateCallback: (
+    name: string,
+    value: string | boolean | number | null,
+  ) => void | Promise<void>;
 };
 
 const AudioLanguageSelector = ({
@@ -36,10 +39,15 @@ const AudioLanguageSelector = ({
     setLoading(true);
     setSuccess(false);
     const submitValue = localValue.trim() === '' ? null : localValue.trim();
-    updateCallback(name, submitValue);
-    setLoading(false);
-    setSuccess(true);
-    setTimeout(() => setSuccess(false), 3000);
+    try {
+      await updateCallback(name, submitValue);
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch {
+      // The parent section renders the API error.
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -64,9 +72,13 @@ const AudioLanguageSelector = ({
         )}
         {normalizedOld !== '' && (
           <button
-            onClick={() => {
+            onClick={async () => {
               setLocalValue('');
-              updateCallback(name, null);
+              try {
+                await updateCallback(name, null);
+              } catch {
+                // The parent section renders the API error.
+              }
             }}
           >
             Reset

@@ -6,6 +6,7 @@ from common.serializers import (
     AsyncTaskResponseSerializer,
     ErrorResponseSerializer,
 )
+from common.src.es_connect import ElasticWrap
 from common.views_base import AdminOnly, ApiBaseView
 from download.serializers import (
     AddToDownloadListSerializer,
@@ -264,30 +265,30 @@ class DownloadApiView(ApiBaseView):
         item_status = validated_data["status"]
 
         if item_status == "ignore-force":
-            # fork: generic_downloads — non-YouTube video IDs (e.g. Rumble's 7-char
-            # IDs) fail Parser's YouTube-length checks, so we cannot pass the bare ID
-            # to extrac_dl(status="ignore") via the normal path.  The video has also
-            # already been deleted by the time this code runs, so re-fetching metadata
-            # is neither possible nor needed.  Write a minimal ignore document directly
-            # to ta_download instead, which is all the "Delete and Ignore" flow requires.
-            from common.src.es_connect import ElasticWrap  # local import to avoid circular deps
+            # The video page deletes the media and index document before this
+            # request. Recreate a minimal ignore marker directly in the queue.
             ignore_doc = {
                 "youtube_id": video_id,
                 "status": "ignore",
                 "timestamp": int(datetime.now().timestamp()),
             }
-            print(f"{video_id}: write ignore document directly (skip Parser)")
             ElasticWrap(
                 f"ta_download/_doc/{video_id}?refresh=true"
             ).put(data=ignore_doc)
             return Response(data_serializer.data)
 
         _, status_code = PendingInteract(video_id).get_item()
+
         if status_code == 404:
             error = ErrorResponseSerializer(
                 {"error": "Download item not found"}
             )
             return Response(error.data, status=404)
+        if status_code not in (200, 201):
+            error = ErrorResponseSerializer(
+                {"error": "download queue lookup failed"}
+            )
+            return Response(error.data, status=502)
 
         print(f"{video_id}: change status to {item_status}")
         PendingInteract(video_id, item_status).update_status()

@@ -13,6 +13,7 @@ import updateChannelOverwrites from '../../api/actions/updateChannelOverwrite';
 import ToggleConfig from '../../components/ToggleConfig';
 import AudioLanguageSelector from './AudioLanguageSelector';
 import { ChannelSettingsSectionProps } from '../registry';
+import { getApiErrorMessage } from '../../functions/APIClient';
 
 const AudioTracksChannelSection = ({
   channel,
@@ -38,18 +39,20 @@ const AudioTracksChannelSection = ({
     configKey: string,
     configValue: string | boolean | number | null,
   ) => {
-    const response = await updateChannelOverwrites(channel.channel_id, configKey, configValue);
-
-    if (response?.error?.error) {
-      setAudioWarning(response.error.error);
-      return;
+    try {
+      const response = await updateChannelOverwrites(channel.channel_id, configKey, configValue);
+      if (response?.error?.error) {
+        throw new Error(response.error.error);
+      }
+      setAudioWarning(null);
+      if (configKey === 'audio_multistreams') {
+        setAudioMultistreams(configValue === null ? null : Boolean(configValue));
+      }
+      onRefresh();
+    } catch (error) {
+      setAudioWarning(getApiErrorMessage(error, 'Failed to update audio settings.'));
+      throw error;
     }
-
-    setAudioWarning(null);
-    if (configKey === 'audio_multistreams') {
-      setAudioMultistreams(configValue === null ? null : Boolean(configValue));
-    }
-    onRefresh();
   };
 
   return (
@@ -67,8 +70,8 @@ const AudioTracksChannelSection = ({
               : 'Enable to include multiple audio languages when available for this channel.'
           }
           updateCallback={handleUpdate}
-          resetCallback={() => {
-            handleUpdate('audio_multistreams', null);
+          resetCallback={async () => {
+            await handleUpdate('audio_multistreams', null);
             setAudioMultistreams(null);
           }}
         />

@@ -5,6 +5,8 @@ Functionality:
 """
 
 import os
+import shutil
+import tempfile
 from datetime import datetime
 from random import randint
 from time import sleep
@@ -54,6 +56,9 @@ class Command(BaseCommand):
         self._update_schedule_tz()
         self._init_app_config()
         self._set_ta_startup_time()
+        # This data migration must run even when the optional broad migration
+        # pass is skipped for a release.
+        self._mig_audio_multistream_key()
 
         if self.skip_migrations:
             return
@@ -104,6 +109,7 @@ class Command(BaseCommand):
             "download",
             "import",
             "playlists",
+            "transcode",
             "videos",
             "ytdlp",
         ]
@@ -140,6 +146,14 @@ class Command(BaseCommand):
                 )
                 has_changed = True
 
+        # Playback locks are request-scoped coordination state.  Clear stale
+        # locks after a process restart; completed cache files remain on disk
+        # and are detected directly by the playback endpoint.
+        playback_prefix = redis_con.NAME_SPACE + "playback:"
+        for key in redis_con.conn.scan_iter(match=playback_prefix + "*"):
+            redis_con.conn.delete(key)
+            has_changed = True
+
         if not has_changed:
             self.stdout.write(self.style.SUCCESS("    no keys found"))
 
@@ -161,11 +175,31 @@ class Command(BaseCommand):
         """clear leftover files from dl cache"""
         self.stdout.write("[4] clear leftover files from dl cache")
         leftover_files = clear_dl_cache(EnvironmentSettings.CACHE_DIR)
+        staging_root = tempfile.gettempdir()
+        stale_staging = 0
+        try:
+            for entry in os.scandir(staging_root):
+                if not (
+                    entry.is_dir()
+                    and entry.name.startswith("ta-audio-")
+                ):
+                    continue
+                shutil.rmtree(entry.path, ignore_errors=True)
+                stale_staging += 1
+        except OSError:
+            pass
+
         if leftover_files:
             self.stdout.write(
                 self.style.SUCCESS(f"    ✓ cleared {leftover_files} files")
             )
-        else:
+        if stale_staging:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"    ✓ cleared {stale_staging} audio staging directories"
+                )
+            )
+        if not leftover_files and not stale_staging:
             self.stdout.write(self.style.SUCCESS("    no files found"))
 
     def _version_check(self):
@@ -274,13 +308,20 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS("    skip completed appsettings init")
             )
-            updated_defaults = AppConfig().add_new_defaults()
+            config = AppConfig()
+            migrated = config.migrate_legacy_audio_keys()
+            for migration in migrated:
+                self.stdout.write(
+                    self.style.SUCCESS(f"    migrated config key: {migration}")
+                )
+
+            updated_defaults = config.add_new_defaults()
             for new_default in updated_defaults:
                 self.stdout.write(
                     self.style.SUCCESS(f"    added new default: {new_default}")
                 )
 
-            cleared = AppConfig().clear_old_keys()
+            cleared = config.clear_old_keys()
             for removed_key in cleared:
                 self.stdout.write(
                     self.style.SUCCESS(f"    removed old key: {removed_key}")
@@ -478,6 +519,29 @@ class Command(BaseCommand):
         else:
             noop_msg = "    no items needed updating"
             self.stdout.write(self.style.SUCCESS(noop_msg))
+
+    def _mig_audio_multistream_key(self) -> None:
+        """Rename the old channel key without dropping values."""
+        self._run_migration(
+            index_name="ta_channel",
+            desc="rename legacy audio_multistream channel overwrite",
+            query={
+                "exists": {"field": "channel_overwrites.audio_multistream"}
+            },
+            script={
+                "source": """
+                    if (ctx._source.containsKey('channel_overwrites')) {
+                        def overwrites = ctx._source.channel_overwrites;
+                        if (!overwrites.containsKey('audio_multistreams')) {
+                            overwrites.audio_multistreams =
+                                overwrites.audio_multistream;
+                        }
+                        overwrites.remove('audio_multistream');
+                    }
+                """,
+                "lang": "painless",
+            },
+        )
 
     def _run_migration(
         self, index_name: str, desc: str, query: dict, script: dict

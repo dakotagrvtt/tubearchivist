@@ -29,19 +29,9 @@ class YouTubeItem:
         self.error = None
         self.youtube_meta = False
         self.json_data = False
-        # fork: generic_downloads — set to the original full URL for non-YouTube items
-        # so build_yt_url() returns the correct address for metadata extraction.
-        self.source_url: str | None = None
 
     def build_yt_url(self):
-        """build url for yt-dlp metadata extraction.
-
-        Returns ``self.source_url`` when set (fork: generic_downloads) so that
-        non-YouTube items use the correct platform URL instead of a constructed
-        YouTube address.
-        """
-        if self.source_url:
-            return self.source_url
+        """build url for yt-dlp metadata extraction."""
         return self.yt_base + self.youtube_id
 
     def get_from_youtube(self, obs_overwrite: dict | None = None):

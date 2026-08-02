@@ -8,7 +8,6 @@ functionality:
 
 import os
 import shutil
-import subprocess
 from datetime import datetime
 
 from appsettings.src.config import AppConfig
@@ -21,7 +20,7 @@ from common.src.helper import (
     ignore_filelist,
     rand_sleep,
 )
-from common.src.ta_redis import RedisQueue
+from common.src.ta_redis import RedisArchivist, RedisQueue
 from common.src.urlparser import ParsedURLType
 from download.src.queue import PendingList
 from download.src.yt_dlp_base import YtWrap
@@ -30,7 +29,6 @@ from playlist.src.index import YoutubePlaylist
 from video.src.comments import CommentList
 from video.src.constants import VideoTypeEnum
 from video.src.index import YoutubeVideo, index_new_video
-from yt_dlp.utils import ISO639Utils
 
 
 class DownloaderBase:
@@ -83,12 +81,7 @@ class VideoDownloader(DownloaderBase):
 
             self._notify(video_data, "Add video metadata to index", progress=1)
             video_type = VideoTypeEnum(video_data["vid_type"])
-            # fork: generic_downloads — pass source_url so YoutubeVideo uses the
-            # correct platform URL when re-fetching metadata after download.
-            source_url = video_data.get("source_url")
-            vid_dict = index_new_video(
-                youtube_id, video_type=video_type, source_url=source_url
-            )
+            vid_dict = index_new_video(youtube_id, video_type=video_type)
             RedisQueue(self.CHANNEL_QUEUE).add(channel_id)
             RedisQueue(self.VIDEO_QUEUE).add(youtube_id)
 
@@ -183,10 +176,6 @@ class VideoDownloader(DownloaderBase):
             format_sort = self.config["downloads"]["format_sort"]
             format_sort_list = [i.strip() for i in format_sort.split(",")]
             self.obs["format_sort"] = format_sort_list
-        if self._resolve_audio_multistreams(
-            self.config.get("downloads", {}), {}
-        ):
-            self.obs["audio_multistreams"] = True
         if self.config["downloads"]["limit_speed"]:
             self.obs["ratelimit"] = (
                 self.config["downloads"]["limit_speed"] * 1024
@@ -195,234 +184,6 @@ class VideoDownloader(DownloaderBase):
         throttle = self.config["downloads"]["throttledratelimit"]
         if throttle:
             self.obs["throttledratelimit"] = throttle * 1024
-
-    def _get_formats(self, youtube_id: str) -> list[dict]:
-        """extract available formats for a video"""
-        extract_obs = {"skip_download": True, "quiet": True}
-        yt_extract = YtWrap(extract_obs, self.config)
-        response, error = yt_extract.extract(
-            f"https://www.youtube.com/watch?v={youtube_id}"
-        )
-        if not response or error:
-            print(f"{youtube_id}: failed to extract formats: {error}")
-            return []
-        return response.get("formats", [])
-
-    @staticmethod
-    def _resolve_audio_formats(
-        formats: list[dict], languages: list[str]
-    ) -> tuple[dict, dict]:
-        """classify each language as DASH audio-only or HLS-only
-
-        Returns:
-            dash_formats: {lang: format_id} for DASH audio-only streams
-            hls_formats:  {lang: format_id} for HLS muxed fallback streams
-        """
-        dash_formats: dict[str, str] = {}
-        hls_formats: dict[str, str] = {}
-
-        for lang in languages:
-            dash = [
-                f
-                for f in formats
-                if (f.get("vcodec") or "none") == "none"
-                and (f.get("acodec") or "none") != "none"
-                and (f.get("language") or "").startswith(lang)
-                and f.get("protocol") in ("https", "http")
-            ]
-            if dash:
-                dash.sort(key=lambda f: f.get("tbr") or 0, reverse=True)
-                chosen = dash[0]
-                dash_formats[lang] = chosen["format_id"]
-                print(
-                    f"[audio_languages] {lang}: DASH audio "
-                    f"{chosen['format_id']} ({chosen.get('acodec')}, "
-                    f"{chosen.get('tbr')}kbps)"
-                )
-                continue
-
-            # fall back to lowest-bitrate HLS muxed stream
-            hls = [
-                f
-                for f in formats
-                if (f.get("acodec") or "none") != "none"
-                and (f.get("language") or "").startswith(lang)
-                and "m3u8" in (f.get("protocol") or "")
-            ]
-            if hls:
-                hls.sort(key=lambda f: f.get("tbr") or 0)
-                chosen = hls[0]
-                hls_formats[lang] = chosen["format_id"]
-                print(
-                    f"[audio_languages] {lang}: HLS fallback "
-                    f"{chosen['format_id']} ({chosen.get('acodec')}, "
-                    f"{chosen.get('tbr')}kbps)"
-                )
-            else:
-                print(f"[audio_languages] no audio found for: {lang}")
-
-        return dash_formats, hls_formats
-
-    @staticmethod
-    def _build_main_format(
-        formats: list[dict], dash_lang_formats: dict
-    ) -> str | None:
-        """build DASH-only format string: bestvideo + DASH audio per language"""
-        video_only = [
-            f
-            for f in formats
-            if (f.get("vcodec") or "none") != "none"
-            and (f.get("acodec") or "none") == "none"
-        ]
-        if not video_only:
-            print("[audio_languages] no video-only formats found")
-            return None
-
-        video_only.sort(
-            key=lambda f: (f.get("height") or 0, f.get("tbr") or 0),
-            reverse=True,
-        )
-        best_video = video_only[0]
-        print(
-            f"[audio_languages] best video: {best_video['format_id']} "
-            f"({best_video.get('height')}p, {best_video.get('vcodec')})"
-        )
-
-        if not dash_lang_formats:
-            return None
-
-        parts = [best_video["format_id"]] + list(dash_lang_formats.values())
-        format_str = "+".join(parts)
-        print(f"[audio_languages] main format string: {format_str}")
-        return format_str
-
-    def _download_hls_audio(
-        self, youtube_id: str, format_id: str, lang: str
-    ) -> str | None:
-        """download a single HLS muxed stream to a temp file for audio extraction
-
-        Returns the path to the downloaded file, or None on failure.
-        """
-        dl_dir = os.path.join(self.CACHE_DIR, "download")
-        base_name = f"{youtube_id}_audio_{lang}"
-        hls_obs = {
-            "format": format_id,
-            "outtmpl": os.path.join(dl_dir, f"{base_name}.%(ext)s"),
-            "audio_multistreams": False,
-            "quiet": True,
-            "noprogress": True,
-            "no_warnings": True,
-            "noplaylist": True,
-        }
-        print(f"[audio_languages] downloading HLS audio {lang}: {format_id}")
-        success, _ = YtWrap(hls_obs, self.config).download(youtube_id)
-        if not success:
-            print(f"[audio_languages] failed HLS audio download for: {lang}")
-            return None
-
-        # find the file yt-dlp created (extension varies: .ts, .mp4, etc.)
-        for fname in os.listdir(dl_dir):
-            if fname.startswith(base_name + "."):
-                return os.path.join(dl_dir, fname)
-
-        print(f"[audio_languages] could not find HLS audio file for: {lang}")
-        return None
-
-    @staticmethod
-    def _normalize_language_code(lang: str) -> str:
-        """best-effort normalisation for ffmpeg language metadata"""
-        if not lang:
-            return "und"
-
-        # Keep the primary subtag for values like "en-US" or "zh-Hans".
-        primary = lang.split("-")[0].strip().lower()
-        if not primary:
-            return "und"
-
-        return primary
-
-    @staticmethod
-    def _language_title(lang: str) -> str:
-        """build a human-friendly stream title from a language tag"""
-        if not lang:
-            return "Unknown"
-
-        code = VideoDownloader._normalize_language_code(lang)
-        long_name = ISO639Utils.short2long(code)
-        if long_name:
-            return long_name
-
-        return lang.upper()
-
-    @staticmethod
-    def _count_audio_streams(path: str) -> int:
-        """count audio streams in a media file"""
-        cmd = [
-            "ffprobe",
-            "-v",
-            "error",
-            "-select_streams",
-            "a",
-            "-show_entries",
-            "stream=index",
-            "-of",
-            "csv=p=0",
-            path,
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if result.returncode != 0:
-            return 0
-
-        output = result.stdout.strip()
-        if not output:
-            return 0
-
-        return len(output.splitlines())
-
-    @staticmethod
-    def _merge_audio_tracks(
-        main_path: str, audio_tracks: list[tuple[str, str]]
-    ) -> bool:
-        """ffmpeg-merge additional audio tracks into the main MKV file"""
-        output_path = main_path + ".merging.mkv"
-        cmd = ["ffmpeg", "-y", "-i", main_path]
-        for _, af in audio_tracks:
-            cmd += ["-i", af]
-
-        # copy all streams from main + audio-only from each extra file
-        cmd += ["-map", "0"]
-
-        for i in range(1, len(audio_tracks) + 1):
-            cmd += ["-map", f"{i}:a:0"]
-
-        existing_audio_count = VideoDownloader._count_audio_streams(main_path)
-        for idx, (lang, _) in enumerate(audio_tracks):
-            audio_stream_idx = existing_audio_count + idx
-            language_code = VideoDownloader._normalize_language_code(lang)
-            language_title = VideoDownloader._language_title(lang)
-            cmd += [
-                f"-metadata:s:a:{audio_stream_idx}",
-                f"language={language_code}",
-                f"-metadata:s:a:{audio_stream_idx}",
-                f"title={language_title}",
-            ]
-
-        cmd += ["-c", "copy", output_path]
-
-        print(f"[audio_languages] ffmpeg merge: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True)
-        if result.returncode != 0:
-            err = result.stderr.decode("utf-8", errors="replace")
-            print(f"[audio_languages] ffmpeg merge failed: {err}")
-            try:
-                os.remove(output_path)
-            except FileNotFoundError:
-                pass
-            return False
-
-        os.replace(output_path, main_path)
-        print(f"[audio_languages] merged audio tracks into {main_path}")
-        return True
 
     def _build_obs_postprocessors(self):
         """add postprocessor to obs"""
@@ -450,115 +211,46 @@ class VideoDownloader(DownloaderBase):
             obs["outtmpl"] = (
                 self.CACHE_DIR + f"/download/%(id)s.{container}"
             )
-        if overwrites:
-            audio_multistreams = self._resolve_audio_multistreams(
-                self.config.get("downloads", {}), overwrites
-            )
-            if audio_multistreams is not None:
-                obs["audio_multistreams"] = audio_multistreams
-
-    def _get_audio_languages(self, channel_id: str) -> list[str] | None:
-        """get audio languages from config or channel overwrites.
-
-        Returns None if audio_multistreams is not effectively enabled — audio_languages
-        alone must not force multi-track downloads (Option A / strict mode).
-        """
-        if not self._is_audio_multistream_enabled(channel_id):
-            return None
-
-        overwrites = self.channel_overwrites.get(channel_id, {})
-        audio_languages = overwrites.get(
-            "audio_languages",
-            self.config["downloads"].get("audio_languages"),
-        )
-        if not audio_languages:
-            return None
-
-        return [
-            lang.strip()
-            for lang in audio_languages.split(",")
-            if lang.strip()
-        ]
-
-    def _is_audio_multistream_enabled(self, channel_id: str) -> bool:
-        """return True if audio_multistreams is enabled globally or via channel overwrite"""
-        overwrites = self.channel_overwrites.get(channel_id, {})
-        return bool(
-            self._resolve_audio_multistreams(
-                self.config.get("downloads", {}), overwrites
-            )
-        )
-
-    @staticmethod
-    def _resolve_audio_multistreams(
-        downloads: dict, overwrites: dict
-    ) -> bool | None:
-        """Resolve audio_multistreams from channel overwrites or app config."""
-        if "audio_multistreams" in overwrites:
-            value = overwrites.get("audio_multistreams")
-            if value is not None:
-                return bool(value)
-
-        if "audio_multistreams" in downloads:
-            return bool(downloads.get("audio_multistreams"))
-
-        return None
-
-    @staticmethod
-    def _get_pending_video(youtube_id: str) -> dict:
-        """Load pending queue document for hook context."""
-        path = f"ta_download/_doc/{youtube_id}"
-        response, _ = ElasticWrap(path).get(print_error=False)
-        return ((response or {}).get("_source") or {}).copy()
-
-    @staticmethod
-    def _discover_audio_languages(formats: list[dict]) -> list[str]:
-        """collect all unique language codes from available audio formats"""
-        seen: set[str] = set()
-        langs: list[str] = []
-        for f in formats:
-            if (f.get("acodec") or "none") == "none":
-                continue
-            lang = (f.get("language") or "").strip()
-            if lang and lang not in seen:
-                seen.add(lang)
-                langs.append(lang)
-        return langs
 
     def _dl_single_vid(self, youtube_id: str, channel_id: str) -> bool:
-        """download one video, running fork-feature hooks around the download"""
+        """download one video and run fork-feature hooks around it"""
         obs = self.obs.copy()
         self._set_overwrites(obs, channel_id)
         dl_cache = os.path.join(self.CACHE_DIR, "download")
-        pending_video = self._get_pending_video(youtube_id)
-
-        # Run pre-download hooks (e.g. multi-audio format selection).
         hooks = get_download_hooks()
         hook_contexts = []
-        for hook in hooks:
-            ctx = hook.pre_download(
-                obs,
-                youtube_id,
-                channel_id,
-                self.config,
-                self.channel_overwrites,
-                pending_video,
-            )
-            hook_contexts.append(ctx)
+        success = False
+        message = "download failed"
+        try:
+            for hook in hooks:
+                try:
+                    ctx = hook.pre_download(
+                        obs,
+                        youtube_id,
+                        channel_id,
+                        self.config,
+                        self.channel_overwrites,
+                    )
+                except Exception as error:  # pragma: no cover - hook boundary
+                    print(f"download hook preparation failed: {error}")
+                    continue
+                hook_contexts.append((hook, ctx))
 
-        # fork: generic_downloads — use download_target from hook context when
-        # available (non-YouTube videos need the full source URL, not bare ID).
-        download_target = youtube_id
-        for ctx in hook_contexts:
-            if "download_target" in ctx:
-                download_target = ctx["download_target"]
-                break
-
-        success, message = YtWrap(obs, self.config).download(download_target)
-
-        # Run post-download hooks regardless of success so they can clean up.
-        for hook, ctx in zip(hooks, hook_contexts):
-            hook.post_download(ctx, youtube_id, dl_cache, success)
+            success, message = YtWrap(obs, self.config).download(youtube_id)
+        finally:
+            # Cleanup hooks must run after both successful downloads and yt-dlp
+            # failures.  A feature failure must not prevent the queue from
+            # recording the primary download result.
+            for hook, ctx in reversed(hook_contexts):
+                try:
+                    hook.post_download(
+                        ctx,
+                        youtube_id,
+                        dl_cache,
+                        success,
+                    )
+                except Exception as error:  # pragma: no cover
+                    print(f"download hook cleanup failed: {error}")
 
         if not success:
             self._handle_error(youtube_id, message)
@@ -598,6 +290,21 @@ class VideoDownloader(DownloaderBase):
         media_file = vid_dict["youtube_id"] + media_ext
         old_path = os.path.join(self.CACHE_DIR, "download", media_file)
         new_path = os.path.join(self.MEDIA_DIR, vid_dict["media_url"])
+        # A redownload replaces the source media; never serve a transcode
+        # generated from the previous file with the same video ID.
+        stale_playback = os.path.join(
+            self.CACHE_DIR, "transcode", f"{vid_dict['youtube_id']}.mp4"
+        )
+        for stale_path in (
+            stale_playback,
+            f"{stale_playback}.part",
+            f"{stale_playback}.part.mp4",
+        ):
+            try:
+                os.remove(stale_path)
+            except FileNotFoundError:
+                pass
+        RedisArchivist().del_message(f"playback:{vid_dict['youtube_id']}")
         # move media file and fix permission
         shutil.move(old_path, new_path, copy_function=shutil.copyfile)
         if host_uid and host_gid:

@@ -129,6 +129,7 @@ const VideoPlayer = ({
 }: VideoPlayerProps) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isTranscoding, setIsTranscoding] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
 
   // If the video element errors (e.g. server returned 202 Transcoding),
@@ -429,6 +430,7 @@ const VideoPlayer = ({
           {isTranscoding && (
             <p className="video-transcoding">Transcoding video for browser playback, retrying in 5 seconds…</p>
           )}
+          {playbackError && <p className="settings-error">{playbackError}</p>}
           <video
             ref={videoRef}
             key={`${getApiUrl()}${videoUrl}-${retryKey}`}
@@ -466,9 +468,15 @@ const VideoPlayer = ({
                 const res = await fetch(`${getApiUrl()}${videoUrl}`, { method: 'HEAD' });
                 if (res.status === 202) {
                   setIsTranscoding(true);
+                  setPlaybackError(null);
+                } else if (!res.ok) {
+                  const payload = await res.json().catch(() => undefined);
+                  setPlaybackError(payload?.error || 'Video playback preparation failed.');
+                } else {
+                  setPlaybackError(null);
                 }
               } catch {
-                // network error — ignore
+                setPlaybackError('Unable to prepare this video for playback.');
               }
             }}
             onKeyDown={e => {

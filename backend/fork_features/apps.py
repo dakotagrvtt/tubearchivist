@@ -20,8 +20,3 @@ class ForkFeaturesConfig(AppConfig):
         # that feature's __init__.py.  Add a new line here for each feature.
 
         import fork_features.audio_tracks  # noqa: F401
-        import fork_features.generic_downloads  # noqa: F401
-
-        from fork_features.quiet_asyncio import install as _install_quiet_asyncio
-
-        _install_quiet_asyncio()

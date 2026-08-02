@@ -22,13 +22,11 @@ Default behavior:
 5. validate the external Compose file
 6. build the application image with `--pull --no-cache`
 7. recreate containers and remove orphaned Compose containers
-8. prune Docker build cache and dangling images
-9. run Docker Compose using the external compose file and the parent project
+8. run Docker Compose using the external compose file and the parent project
    directory so `build: ./tubearchivist` resolves correctly
 
-The Docker cleanup only targets Docker build cache and dangling images. It does
-not remove named volumes, so Tube Archivist data mounted at `/youtube`,
-`/cache`, Redis, and Elasticsearch remains intact.
+The script does not prune Docker state. Named volumes and image caches remain
+available for rollback and for the next build.
 
 Example:
 

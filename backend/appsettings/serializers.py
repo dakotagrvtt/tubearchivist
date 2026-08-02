@@ -5,7 +5,9 @@
 import copy
 
 from common.serializers import ValidateUnknownFieldsMixin
-from fork_features.registry import get_app_serializer_fields as _fork_app_fields
+from fork_features.registry import (
+    get_app_serializer_fields as _fork_app_fields,
+)
 from rest_framework import serializers
 
 
@@ -62,8 +64,6 @@ class AppConfigDownloadsSerializer(
     extractor_lang = serializers.CharField(allow_null=True)
     integrate_ryd = serializers.BooleanField()
     integrate_sponsorblock = serializers.BooleanField()
-    audio_multistreams = serializers.BooleanField()
-    audio_languages = serializers.CharField(allow_null=True)
     container = serializers.ChoiceField(choices=["mp4", "mkv"])
 
     def get_fields(self):

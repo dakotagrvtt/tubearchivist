@@ -182,7 +182,13 @@ class AppConfigApiView(ApiBaseView):
         serializer = AppConfigSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
-        updated_config = AppConfig().update_config(validated_data)
+        try:
+            updated_config = AppConfig().update_config(validated_data)
+        except ValueError as error:
+            return Response(
+                ErrorResponseSerializer({"error": str(error)}).data,
+                status=502,
+            )
         updated_serializer = AppConfigSerializer(updated_config)
         return Response(updated_serializer.data)
 

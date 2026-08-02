@@ -34,7 +34,16 @@ class MediaStreamExtractor:
         if result.returncode != 0:
             return self.metadata
 
-        streams = json.loads(result.stdout).get("streams")
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return self.metadata
+        if not isinstance(payload, dict):
+            return self.metadata
+
+        streams = payload.get("streams") or []
+        if not isinstance(streams, list):
+            return self.metadata
         for stream in streams:
             self.process_stream(stream)
 
@@ -42,6 +51,8 @@ class MediaStreamExtractor:
 
     def process_stream(self, stream) -> None:
         """parse stream to metadata"""
+        if not isinstance(stream, dict):
+            return
         codec_type = stream.get("codec_type")
         if codec_type == "video":
             self._extract_video_metadata(stream)
@@ -54,9 +65,13 @@ class MediaStreamExtractor:
             # is probably thumbnail
             return
 
+        try:
+            bitrate = int(stream.get("bit_rate") or 0)
+        except (TypeError, ValueError):
+            bitrate = 0
         self.metadata.append(
             {
-                "bitrate": int(stream.get("bit_rate", 0)),
+                "bitrate": bitrate,
                 "codec": stream["codec_name"],
                 "height": stream["height"],
                 "index": stream["index"],
@@ -67,8 +82,12 @@ class MediaStreamExtractor:
 
     def _extract_audio_metadata(self, stream) -> None:
         """extract audio metadata"""
+        try:
+            bitrate = int(stream.get("bit_rate") or 0)
+        except (TypeError, ValueError):
+            bitrate = 0
         metadata = {
-            "bitrate": int(stream.get("bit_rate", 0)),
+            "bitrate": bitrate,
             "codec": stream.get("codec_name", "undefined"),
             "index": stream["index"],
             "type": "audio",

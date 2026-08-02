@@ -4,6 +4,7 @@ Functionality:
 - load config variables into redis
 """
 
+import copy
 from random import randint
 from time import sleep
 from typing import Literal, TypedDict
@@ -47,8 +48,6 @@ class DownloadsConfigType(TypedDict):
     extractor_lang: str | None
     integrate_ryd: bool
     integrate_sponsorblock: bool
-    audio_multistreams: bool
-    audio_languages: str | None
     container: Literal["mp4", "mkv"]
 
 
@@ -99,8 +98,6 @@ class AppConfig:
             "extractor_lang": None,
             "integrate_ryd": False,
             "integrate_sponsorblock": False,
-            "audio_multistreams": False,
-            "audio_languages": None,
             "container": "mp4",
         },
         "application": {
@@ -122,7 +119,7 @@ class AppConfig:
 
     def update_config(self, data: dict) -> AppConfigType:
         """update single config value"""
-        new_config = self.config.copy()
+        new_config = copy.deepcopy(self.config)
         for key, value in data.items():
             if (
                 isinstance(value, dict)
@@ -134,8 +131,9 @@ class AppConfig:
                 new_config[key] = value
 
         response, status_code = ElasticWrap(self.ES_PATH).post(new_config)
-        if not status_code == 200:
+        if status_code not in (200, 201):
             print(response)
+            raise ValueError("failed to update application config")
 
         self.config = new_config
 
@@ -163,12 +161,10 @@ class AppConfig:
 
     def sync_defaults(self):
         """sync defaults at startup, needs to be called with __new__"""
-        return ElasticWrap(self.ES_PATH).post(self.CONFIG_DEFAULTS)
+        return ElasticWrap(self.ES_PATH).post(self._effective_defaults())
 
     def _effective_defaults(self) -> AppConfigType:
-        """Return CONFIG_DEFAULTS merged with fork-feature download defaults."""
-        import copy
-
+        """Return defaults merged with fork-feature download defaults."""
         merged = copy.deepcopy(self.CONFIG_DEFAULTS)
         merged["downloads"].update(_fork_config_defaults())  # type: ignore
         return merged
@@ -192,6 +188,19 @@ class AppConfig:
                     updated.append(str(to_update))
 
         return updated
+
+    def migrate_legacy_audio_keys(self) -> list[str]:
+        """Copy the old singular audio key before old keys are pruned."""
+        downloads = self.config.get("downloads", {})
+        if (
+            "audio_multistream" not in downloads
+            or "audio_multistreams" in downloads
+        ):
+            return []
+
+        value = downloads["audio_multistream"]
+        self.update_config({"downloads": {"audio_multistreams": value}})
+        return ["downloads.audio_multistream -> downloads.audio_multistreams"]
 
     def clear_old_keys(self) -> list[str]:
         """clear old unused keys"""

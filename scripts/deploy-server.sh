@@ -92,10 +92,4 @@ compose build --pull --no-cache
 log "starting containers from fresh build"
 compose up -d --force-recreate --remove-orphans
 
-log "pruning Docker build cache"
-docker builder prune --force
-
-log "pruning dangling Docker images"
-docker image prune --force
-
-log "deployment finished successfully"
+log "deployment finished successfully at ${BRANCH}@${DEPLOY_COMMIT}"

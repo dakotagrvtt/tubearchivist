@@ -4,8 +4,8 @@ type ToggleConfigProps = {
   text?: string;
   helperText?: string;
   disabled?: boolean;
-  updateCallback: (name: string, value: boolean) => void;
-  resetCallback?: (arg0: boolean) => void;
+  updateCallback: (name: string, value: boolean) => void | Promise<void>;
+  resetCallback?: (arg0: boolean) => void | Promise<void>;
   onValue?: boolean | string;
   offValue?: boolean | string;
 };
@@ -33,7 +33,11 @@ const ToggleConfig = ({
             if (disabled) {
               return;
             }
-            updateCallback(name, event.target.checked);
+            Promise.resolve()
+              .then(() => updateCallback(name, event.target.checked))
+              .catch(() => {
+                // The callback owns the visible API error.
+              });
           }}
         />
 
@@ -50,7 +54,19 @@ const ToggleConfig = ({
         )}
       </div>
 
-      {resetCallback !== undefined && <button onClick={() => resetCallback(false)}>Reset</button>}
+      {resetCallback !== undefined && (
+        <button
+          onClick={() => {
+            Promise.resolve()
+              .then(() => resetCallback(false))
+              .catch(() => {
+                // The callback owns the visible API error.
+              });
+          }}
+        >
+          Reset
+        </button>
+      )}
     </div>
   );
 };

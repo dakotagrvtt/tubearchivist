@@ -12,15 +12,13 @@ class AudioTracksMediaStreamEnricher:
         metadata: dict,
     ) -> dict:
         """Augment audio stream metadata with UI-friendly fields."""
-        tags = stream.get("tags", {})
+        tags = stream.get("tags") or {}
+        if not isinstance(tags, dict):
+            tags = {}
 
         bitrate_raw = stream.get("bit_rate")
         if not bitrate_raw:
-            bps_tag = (
-                tags.get("BPS")
-                or tags.get("BPS-eng")
-                or tags.get("NUMBER_OF_BYTES")
-            )
+            bps_tag = tags.get("BPS") or tags.get("BPS-eng")
             if bps_tag:
                 try:
                     bitrate_raw = int(bps_tag)
@@ -66,7 +64,7 @@ class AudioTracksMediaStreamEnricher:
     @staticmethod
     def _clean_audio_title(track_title: str | None) -> str | None:
         """Remove noisy/generic titles that are not useful in the UI."""
-        if not track_title:
+        if not isinstance(track_title, str) or not track_title:
             return None
 
         cleaned = track_title.strip()

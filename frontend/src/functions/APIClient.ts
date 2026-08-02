@@ -26,6 +26,21 @@ export type ApiResponseType<T> = {
   status: number;
 };
 
+export const getApiErrorMessage = (error: unknown, fallback: string): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message) {
+      return message;
+    }
+  }
+
+  return fallback;
+};
+
 const APIClient = async <T>(
   endpoint: string,
   { method = 'GET', body, headers = {}, ...options }: ApiClientOptions = {},

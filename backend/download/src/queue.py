@@ -154,10 +154,7 @@ class PendingList(PendingIndex):
     def _process_entry(self, entry: ParsedURLType, idx: int, total: int):
         """process single entry from url list"""
         if entry["type"] == "video":
-            # fork: generic_downloads — thread source_url for non-YouTube videos
-            to_add = self._add_video(
-                entry["url"], entry["vid_type"], entry.get("source_url")
-            )
+            to_add = self._add_video(entry["url"], entry["vid_type"])
             if to_add:
                 self._notify_add(
                     item_type="video",
@@ -173,7 +170,7 @@ class PendingList(PendingIndex):
         else:
             raise ValueError(f"invalid url_type: {entry}")
 
-    def _add_video(self, url, vid_type, source_url=None) -> dict | None:
+    def _add_video(self, url, vid_type) -> dict | None:
         """add video to list"""
         if self.auto_start and url in set(
             i["youtube_id"] for i in self.all_pending
@@ -191,8 +188,7 @@ class PendingList(PendingIndex):
             print(f"{url}: skipped adding force video already in queue.")
             return None
 
-        # fork: generic_downloads — pass source_url for non-YouTube videos
-        to_add = self._parse_video(url, vid_type, source_url=source_url)
+        to_add = self._parse_video(url, vid_type)
         if to_add:
             self.missing_videos.append(to_add)
 
@@ -314,13 +310,9 @@ class PendingList(PendingIndex):
                 total=total,
             )
 
-    def _parse_video(self, url: str, vid_type, source_url=None) -> dict | None:
+    def _parse_video(self, url: str, vid_type) -> dict | None:
         """parse video when not flat, fetch from YT"""
         video = YoutubeVideo(youtube_id=url)
-        # fork: generic_downloads — set source_url so build_yt_url() uses the
-        # correct platform URL for metadata extraction on non-YouTube sites.
-        if source_url:
-            video.source_url = source_url
         video.get_from_youtube()
 
         if not video.youtube_meta:
@@ -334,34 +326,6 @@ class PendingList(PendingIndex):
                     level="error",
                 )
             return None
-
-        # fork: generic_downloads — yt-dlp extractors for non-YouTube platforms
-        # often return 'uploader'/'uploader_id' instead of 'channel'/'channel_id'.
-        # Normalise those fields before the required-key check so videos from
-        # Rumble, Vimeo, etc. are not silently dropped.
-        if source_url:
-            meta = video.youtube_meta
-            if not meta.get("channel") and meta.get("uploader"):
-                meta["channel"] = meta["uploader"]
-            if not meta.get("channel_id"):
-                if meta.get("uploader_id"):
-                    # Strip leading path separators (e.g. '/c/ChannelName')
-                    meta["channel_id"] = (
-                        meta["uploader_id"].strip("/").replace("/", "_")
-                    )
-                else:
-                    # Last resort: synthesise a URL-safe stable ID from domain + uploader.
-                    # Replace dots with underscores so the ID is safe in URL routing.
-                    domain = (
-                        meta.get("webpage_url_domain", "unknown")
-                        .replace(".", "_")
-                    )
-                    uploader = (
-                        meta.get("uploader", "unknown")
-                        .lower()
-                        .replace(" ", "_")
-                    )
-                    meta["channel_id"] = f"ext_{domain}_{uploader}"
 
         expected_keys = {"id", "title", "channel", "channel_id"}
         if not set(video.youtube_meta.keys()).issuperset(expected_keys):
@@ -383,11 +347,6 @@ class PendingList(PendingIndex):
         )
         if not to_add:
             return None
-
-        # fork: generic_downloads — persist source_url in the pending document
-        # so the downloader and re-indexer can find the correct platform URL.
-        if source_url:
-            to_add["source_url"] = source_url
 
         ThumbManager(item_id=url).download_video_thumb(to_add["vid_thumb_url"])
         rand_sleep(self.config)

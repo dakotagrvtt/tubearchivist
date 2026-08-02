@@ -3,7 +3,7 @@ Fork Feature: Audio Tracks – ffmpeg merge helpers
 
 Handles:
 - Counting existing audio streams in a media file (via ffprobe)
-- Merging extra HLS fallback audio tracks into the main MP4 (via ffmpeg)
+- Merging extra audio tracks into the configured primary container (via ffmpeg)
 """
 
 from __future__ import annotations
@@ -41,16 +41,20 @@ def count_audio_streams(path: str) -> int:
 def merge_additional_audio_tracks(
     main_path: str, audio_tracks: list[tuple[str, str]]
 ) -> bool:
-    """Merge extra fallback audio tracks into the main MP4 via ffmpeg.
+    """Merge extra audio tracks into the configured primary file via ffmpeg.
 
     - Maps all streams from the main file.
     - Appends the first audio stream from each fallback file.
-    - Stream-copies only (no re-encode).
+    - Stream-copies only (no re-encode), preserving the primary extension.
     - Labels appended tracks with ISO-639-2 language codes and human titles.
 
     Returns True on success, False on failure.
     """
-    output_path = main_path + ".merging.mp4"
+    if not os.path.isfile(main_path) or not audio_tracks:
+        return False
+
+    extension = os.path.splitext(main_path)[1] or ".mkv"
+    output_path = f"{main_path}.merging{extension}"
     cmd = ["ffmpeg", "-y", "-i", main_path]
     for _, track_path in audio_tracks:
         cmd += ["-i", track_path]
@@ -72,9 +76,12 @@ def merge_additional_audio_tracks(
     cmd += ["-c", "copy", output_path]
 
     print(f"[audio_languages] ffmpeg merge: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True)
+    result = subprocess.run(cmd, capture_output=True, check=False)
     if result.returncode != 0:
-        err = result.stderr.decode("utf-8", errors="replace")
+        stderr = result.stderr or ""
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        err = str(stderr)
         print(f"[audio_languages] ffmpeg merge failed: {err}")
         try:
             os.remove(output_path)
@@ -82,5 +89,13 @@ def merge_additional_audio_tracks(
             pass
         return False
 
-    os.replace(output_path, main_path)
+    try:
+        os.replace(output_path, main_path)
+    except OSError as error:
+        print(f"[audio_languages] failed to replace primary media: {error}")
+        try:
+            os.remove(output_path)
+        except FileNotFoundError:
+            pass
+        return False
     return True

@@ -400,7 +400,7 @@ class ElasticIndexWrap:
             print("AppConfig not found, creating defaults...")
             handler = AppConfig.__new__(AppConfig)
             handler.sync_defaults()
-            config = AppConfig.CONFIG_DEFAULTS
+            config = handler._effective_defaults()
 
         if config["application"]["enable_snapshot"]:
             # take snapshot if enabled

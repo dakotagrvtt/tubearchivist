@@ -9,7 +9,10 @@ type InputTextProps = {
     | React.Dispatch<React.SetStateAction<string | null>>
     | React.Dispatch<React.SetStateAction<number | null>>;
   oldValue: string | number | null;
-  updateCallback: (arg0: string, arg1: string | boolean | number | null) => void;
+  updateCallback: (
+    arg0: string,
+    arg1: string | boolean | number | null,
+  ) => void | Promise<void>;
 };
 
 const InputConfig = ({ type, name, value, setValue, oldValue, updateCallback }: InputTextProps) => {
@@ -34,10 +37,15 @@ const InputConfig = ({ type, name, value, setValue, oldValue, updateCallback }: 
   const handleUpdate = async (name: string, value: string | boolean | number | null) => {
     setLoading(true);
     setSuccess(false);
-    updateCallback(name, value);
-    setLoading(false);
-    setSuccess(true);
-    setTimeout(() => setSuccess(false), 3000);
+    try {
+      await updateCallback(name, value);
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch {
+      // The callback owns the visible API error; do not show success.
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

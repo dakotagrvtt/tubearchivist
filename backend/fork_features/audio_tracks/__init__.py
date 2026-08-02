@@ -1,8 +1,8 @@
 """
 Fork Feature: Audio Tracks
 
-Adds the ability to download multiple audio language tracks into a single MP4,
-with both global and per-channel settings support.
+Adds the ability to archive multiple audio language tracks in the configured
+container, with both global and per-channel settings support.
 
 This module self-registers when imported.  It is imported via
 ``backend/fork_features/apps.py`` (a Django AppConfig), which means it is

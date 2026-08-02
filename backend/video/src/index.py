@@ -197,30 +197,6 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
 
     def process_youtube_meta(self):
         """extract relevant fields from youtube"""
-        # fork: generic_downloads — normalise uploader/uploader_id for non-YouTube
-        # platforms where yt-dlp may not populate channel/channel_id directly.
-        if self.source_url:
-            meta = self.youtube_meta
-            if not meta.get("channel") and meta.get("uploader"):
-                meta["channel"] = meta["uploader"]
-            if not meta.get("channel_id"):
-                if meta.get("uploader_id"):
-                    meta["channel_id"] = (
-                        meta["uploader_id"].strip("/").replace("/", "_")
-                    )
-                else:
-                    # Replace dots with underscores so the ID is URL-safe in routing.
-                    domain = (
-                        meta.get("webpage_url_domain", "unknown")
-                        .replace(".", "_")
-                    )
-                    uploader = (
-                        meta.get("uploader", "unknown")
-                        .lower()
-                        .replace(" ", "_")
-                    )
-                    meta["channel_id"] = f"ext_{domain}_{uploader}"
-
         self._validate_id()
         self.channel_id = self.youtube_meta["channel_id"]
         last_refresh = int(datetime.now().timestamp())
@@ -271,17 +247,6 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         remote_id = self.youtube_meta["id"]
 
         if not self.youtube_id == remote_id:
-            # fork: generic_downloads — non-YouTube IDs may be normalised by
-            # yt-dlp during full extraction; treat that as a benign update
-            # rather than a bot-detection redirect error.
-            if self.source_url:
-                print(
-                    f"[generic_downloads] {self.youtube_id}: "
-                    f"ID normalised to {remote_id!r}, updating"
-                )
-                self.youtube_id = remote_id
-                return
-
             # unexpected redirect (YouTube only)
             message = (
                 f"[reindex][{self.youtube_id}] got an unexpected redirect "
@@ -315,7 +280,7 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         if os.path.exists(cache_path):
             return cache_path
 
-        # check for mkv from audio_languages override
+        # Keep compatibility with older downloads that were written as MKV.
         mkv_cache = f"{cache_dir}/download/{video_id}.mkv"
         if os.path.exists(mkv_cache):
             return mkv_cache
@@ -365,8 +330,6 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         container = self._get_download_container()
 
         # Prefer the actually downloaded cache file extension when available.
-        # This keeps media_url aligned with effective runtime output when
-        # multistream is enabled but only a single audio track is selected.
         cache_dir = os.path.join(EnvironmentSettings.CACHE_DIR, "download")
         preferred_order = [container, "mp4", "mkv"]
         seen: set[str] = set()
@@ -387,26 +350,13 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         )
 
     def _get_download_container(self) -> str:
-        """resolve container with channel overwrites.
-
-        MKV is only forced when audio_multistreams is effectively enabled.
-        audio_languages alone must not override the container (Option A / strict).
-        """
+        """resolve the configured container with channel overwrites."""
         container = self.config["downloads"].get("container", "mp4")
         channel_overwrites = self.json_data.get("channel", {}).get(
             "channel_overwrites", {}
         )
         if channel_overwrites.get("download_container"):
             container = channel_overwrites.get("download_container")
-
-        # audio_multistreams being on requires mkv for multi-track muxing.
-        # Respect channel override false explicitly (suppress global setting).
-        if channel_overwrites.get("audio_multistreams") is not None:
-            audio_multistreams = channel_overwrites.get("audio_multistreams")
-        else:
-            audio_multistreams = self.config["downloads"].get("audio_multistreams")
-        if audio_multistreams:
-            container = "mkv"
 
         return container
 
@@ -464,9 +414,6 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
 
     def _get_ryd_stats(self):
         """get optional stats from returnyoutubedislikeapi.com"""
-        # fork: generic_downloads — RYD only tracks YouTube video IDs
-        if self.source_url:
-            return
         # pylint: disable=broad-except
         try:
             print(f"{self.youtube_id}: get ryd stats")
@@ -486,9 +433,6 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
 
     def _get_sponsorblock(self):
         """get optional sponsorblock timestamps from sponsor.ajay.app"""
-        # fork: generic_downloads — SponsorBlock only indexes YouTube content
-        if self.source_url:
-            return
         sponsorblock = SponsorBlock().get_timestamps(self.youtube_id)
         if sponsorblock:
             self.json_data["sponsorblock"] = sponsorblock
@@ -611,15 +555,11 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         ThumbManager(self.youtube_id).embed_video_art(self.json_data)
 
 
-def index_new_video(youtube_id, video_type=VideoTypeEnum.VIDEOS, source_url=None):
+def index_new_video(youtube_id, video_type=VideoTypeEnum.VIDEOS):
     """combined classes to create new video in index"""
     from appsettings.src.reindex import Reindex
 
     video = YoutubeVideo(youtube_id, video_type=video_type)
-    # fork: generic_downloads — set source_url so build_yt_url() and YouTube-
-    # only feature guards work correctly for non-YouTube videos.
-    if source_url:
-        video.source_url = source_url
     video.get_from_es(print_error=False)
     if video.json_data:
         # reindex only for force redownload

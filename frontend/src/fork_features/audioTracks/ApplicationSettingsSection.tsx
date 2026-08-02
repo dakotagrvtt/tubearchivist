@@ -14,6 +14,7 @@ import updateAppsettingsConfig from '../../api/actions/updateAppsettingsConfig';
 import ToggleConfig from '../../components/ToggleConfig';
 import AudioLanguageSelector from './AudioLanguageSelector';
 import { AppSettingsSectionProps } from '../registry';
+import { getApiErrorMessage } from '../../functions/APIClient';
 
 const AudioTracksAppSection = ({ appSettingsConfig, onRefresh }: AppSettingsSectionProps) => {
   const [audioMultistreams, setAudioMultistreams] = useState(false);
@@ -33,15 +34,17 @@ const AudioTracksAppSection = ({ appSettingsConfig, onRefresh }: AppSettingsSect
   ) => {
     const [group, key] = configKey.split('.');
     const updatedConfig = { [group]: { [key]: configValue } };
-    const response = await updateAppsettingsConfig(updatedConfig);
-
-    if (response?.error?.error) {
-      setAudioWarning(response.error.error);
-      return;
+    try {
+      const response = await updateAppsettingsConfig(updatedConfig);
+      if (response?.error?.error) {
+        throw new Error(response.error.error);
+      }
+      setAudioWarning(null);
+      onRefresh();
+    } catch (error) {
+      setAudioWarning(getApiErrorMessage(error, 'Failed to update audio settings.'));
+      throw error;
     }
-
-    setAudioWarning(null);
-    onRefresh();
   };
 
   return (

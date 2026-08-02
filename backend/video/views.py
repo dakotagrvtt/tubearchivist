@@ -1,17 +1,19 @@
 """all API views for video endpoints"""
 
+import mimetypes
+import os
+
+from django.http import HttpResponse
+from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rest_framework.response import Response
+
 from common.serializers import ErrorResponseSerializer
+from common.src.env_settings import EnvironmentSettings
 from common.src.helper import calc_is_watched
 from common.src.ta_redis import RedisArchivist
 from common.src.watched import WatchState
 from common.views_base import AdminWriteOnly, ApiBaseView
-from drf_spectacular.utils import OpenApiResponse, extend_schema
 from playlist.src.index import YoutubePlaylist
-import os
-import subprocess
-
-from fork_features.streaming import serve_file_with_range  # fork: Range-aware streaming
-from rest_framework.response import Response
 from video.serializers import (
     CommentItemSerializer,
     PlayerSerializer,
@@ -21,9 +23,15 @@ from video.serializers import (
     VideoProgressUpdateSerializer,
     VideoSerializer,
 )
-from common.src.env_settings import EnvironmentSettings
 from video.src.index import YoutubeVideo
 from video.src.query_building import QueryBuilder
+from video.tasks import (
+    _safe_path,
+    playback_cache_ready,
+    playback_lock_key,
+    playback_status_key,
+    prepare_playback,
+)
 
 
 class VideoApiListView(ApiBaseView):
@@ -301,84 +309,152 @@ class VideoStreamView(ApiBaseView):
 
     search_base = "ta_video/_doc/"
 
+    def _get_media(self, video_id):
+        """Return the indexed media URL and safe source path."""
+        self.get_document(video_id)
+        if self.status_code == 404 or not isinstance(self.response, dict):
+            return None, None, Response(
+                ErrorResponseSerializer({"error": "video not found"}).data,
+                status=404,
+            )
+
+        media_url = self.response.get("media_url")
+        if not media_url:
+            return None, None, Response(
+                ErrorResponseSerializer({"error": "video missing"}).data,
+                status=404,
+            )
+
+        # SearchProcess exposes media URLs with the web root prefix (for
+        # example ``/youtube/channel/id.mp4``), while storage helpers expect a
+        # path relative to MEDIA_DIR. Normalize both forms before validation
+        # and before constructing an internal Nginx redirect.
+        media_url = str(media_url).lstrip("/")
+        media_root = EnvironmentSettings.MEDIA_DIR.strip("/")
+        if media_root and media_url.startswith(media_root + "/"):
+            media_url = media_url[len(media_root) + 1 :]
+
+        try:
+            media_path = _safe_path(EnvironmentSettings.MEDIA_DIR, media_url)
+        except ValueError:
+            media_path = None
+        if not media_path or not os.path.isfile(media_path):
+            return None, None, Response(
+                ErrorResponseSerializer({"error": "video missing"}).data,
+                status=404,
+            )
+        return media_url, media_path, None
+
+    @staticmethod
+    def _redirect(request, uri: str, content_type: str):
+        """Ask the front proxy to serve a protected range-capable file."""
+        response = HttpResponse(status=200)
+        response["X-Accel-Redirect"] = uri
+        response["Content-Type"] = content_type
+        response["Accept-Ranges"] = "bytes"
+        if request.method == "HEAD":
+            response.content = b""
+        return response
+
+    @staticmethod
+    def _status_response(video_id: str):
+        """Read preparation state without starting a new task."""
+        if playback_cache_ready(video_id):
+            return {"status": "ready"}
+
+        redis = RedisArchivist()
+        status = redis.get_message_dict(playback_status_key(video_id))
+        lock_key = redis.NAME_SPACE + playback_lock_key(video_id)
+        if redis.conn.exists(lock_key):
+            return {"status": "preparing"}
+        if status.get("status") == "ready":
+            return {"status": "pending"}
+        return status or {"status": "pending"}
+
     @extend_schema(
         responses={
             200: OpenApiResponse(description="video stream"),
+            202: OpenApiResponse(description="playback preparation queued"),
             404: OpenApiResponse(
                 ErrorResponseSerializer(), description="video not found"
             ),
         },
     )
     def get(self, request, video_id):
-        """stream video or transcode to mp4"""
-        self.get_document(video_id)
-        if self.status_code == 404:
-            error = ErrorResponseSerializer({"error": "video not found"})
-            return Response(error.data, status=404)
+        """Return an accelerated stream or queue browser preparation."""
+        media_url, media_path, error = self._get_media(video_id)
+        if error:
+            return error
 
-        media_url = self.response.get("media_url")
-        if not media_url:
-            error = ErrorResponseSerializer({"error": "video missing"})
-            return Response(error.data, status=404)
+        if media_url.lower().endswith(".mp4"):
+            return self._redirect(
+                request,
+                f"/protected-media/{media_url}",
+                mimetypes.guess_type(media_path)[0] or "video/mp4",
+            )
 
-        media_path = os.path.join(EnvironmentSettings.MEDIA_DIR, media_url)
-        if not os.path.exists(media_path):
-            error = ErrorResponseSerializer({"error": "video missing"})
-            return Response(error.data, status=404)
+        if playback_cache_ready(video_id):
+            return self._redirect(
+                request,
+                f"/protected-transcode/{video_id}.mp4",
+                "video/mp4",
+            )
 
-        if media_url.endswith(".mp4"):
-            return serve_file_with_range(request, media_path)  # fork: Range-aware streaming
+        status = self._status_response(video_id)
+        if status.get("status") == "failed":
+            return Response(
+                ErrorResponseSerializer(
+                    {
+                        "error": status.get(
+                            "error", "playback preparation failed"
+                        )
+                    }
+                ).data,
+                status=500,
+            )
 
-        cache_dir = os.path.join(EnvironmentSettings.CACHE_DIR, "transcode")
-        os.makedirs(cache_dir, exist_ok=True)
-        cache_path = os.path.join(cache_dir, f"{video_id}.mp4")
+        # HEAD is used by the player as a cheap poll and must not enqueue work.
+        if request.method == "HEAD" or status.get("status") == "preparing":
+            response = Response({"status": "preparing"}, status=202)
+            response["Retry-After"] = "5"
+            return response
 
-        sentinel_path = cache_path + ".transcoding"
-
-        # Serve cached transcode immediately if available
-        if os.path.exists(cache_path):
-            return serve_file_with_range(request, cache_path)  # fork: Range-aware streaming
-
-        # Guard against concurrent transcode of the same video
-        if os.path.exists(sentinel_path):
-            in_progress = Response({"status": "transcoding"}, status=202)
-            in_progress["Retry-After"] = "5"
-            return in_progress
-
-        # Run transcode; sentinel is removed regardless of outcome
+        redis = RedisArchivist()
+        redis.set_message(
+            playback_status_key(video_id),
+            {"status": "preparing"},
+            expire=300,
+        )
         try:
-            with open(sentinel_path, "w"):
-                pass  # create sentinel
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-i",
-                media_path,
-                "-map",
-                "0:v:0",
-                "-map",
-                "0:a",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "23",
-                "-c:a",
-                "aac",
-                "-movflags",
-                "+faststart",
-                cache_path,
-            ]
-            subprocess.run(cmd, check=False)
-        finally:
-            try:
-                os.remove(sentinel_path)
-            except FileNotFoundError:
-                pass
+            prepare_playback.delay(video_id, media_url)
+        except Exception as error:  # pragma: no cover - broker boundary
+            print(f"{video_id}: failed to queue playback preparation: {error}")
+            redis.set_message(
+                playback_status_key(video_id),
+                {
+                    "status": "failed",
+                    "error": "playback preparation could not be queued",
+                },
+                expire=300,
+            )
+            return Response(
+                ErrorResponseSerializer(
+                    {"error": "playback preparation could not be queued"}
+                ).data,
+                status=503,
+            )
+        response = Response({"status": "preparing"}, status=202)
+        response["Retry-After"] = "5"
+        return response
 
-        if not os.path.exists(cache_path):
-            error = ErrorResponseSerializer({"error": "transcode failed"})
-            return Response(error.data, status=500)
 
-        return serve_file_with_range(request, cache_path)  # fork: Range-aware streaming
+class VideoPlaybackStatusView(VideoStreamView):
+    """Return playback preparation state without triggering preparation."""
+
+    def get(self, request, video_id):  # pylint: disable=unused-argument
+        media_url, _, error = self._get_media(video_id)
+        if error:
+            return error
+        if media_url.lower().endswith(".mp4"):
+            return Response({"status": "ready"})
+        return Response(self._status_response(video_id))

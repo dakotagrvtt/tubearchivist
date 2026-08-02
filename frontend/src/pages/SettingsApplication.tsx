@@ -20,6 +20,7 @@ import validateCookie from '../api/actions/validateCookie';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import MembershipAppsettings from '../components/MembershipAppsettings';
 import { APP_SETTINGS_SECTIONS } from '../fork_features/registry';
+import { getApiErrorMessage } from '../functions/APIClient';
 
 type SettingsApplicationReponses = {
   snapshots?: SnapshotListType;
@@ -32,6 +33,7 @@ const SettingsApplication = () => {
   const { userConfig } = useUserConfigStore();
   const [response, setResponse] = useState<SettingsApplicationReponses>();
   const [refresh, setRefresh] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
   const [visibleSnapshotCount, setVisibleSnapshotCount] = useState(10);
 
   const snapshots = response?.snapshots;
@@ -148,11 +150,17 @@ const SettingsApplication = () => {
   ) => {
     const [group, key] = configKey.split('.');
     const updatedConfig = { [group]: { [key]: configValue } } as Partial<AppSettingsConfigType>;
-    const response = await updateAppsettingsConfig(updatedConfig);
-    if (response?.error?.error) {
-      return;
+    try {
+      const response = await updateAppsettingsConfig(updatedConfig);
+      if (response?.error?.error) {
+        throw new Error(response.error.error);
+      }
+      setUpdateError(null);
+      setRefresh(true);
+    } catch (error) {
+      setUpdateError(getApiErrorMessage(error, 'Failed to update application settings.'));
+      throw error;
     }
-    setRefresh(true);
   };
 
   const handleCookieUpdate = async () => {
@@ -191,6 +199,7 @@ const SettingsApplication = () => {
       <div className="boxed-content">
         <SettingsNavigation />
         <Notifications pageName={'all'} />
+        {updateError && <p className="settings-error">{updateError}</p>}
 
         <div className="title-bar">
           <h1>Application Configurations</h1>
@@ -471,8 +480,8 @@ const SettingsApplication = () => {
                       files.
                     </li>
                     <li>
-                      Enable multistream audio to download multiple audio languages (maps to{' '}
-                      <i>--audio-multistreams</i>). This increases file size.
+                      Enable multistream audio to archive additional audio languages when they
+                      are available. This increases file size.
                     </li>
                   </ul>
                 </div>

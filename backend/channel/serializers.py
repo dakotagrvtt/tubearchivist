@@ -21,10 +21,6 @@ class ChannelOverwriteSerializer(
     download_container = serializers.ChoiceField(
         choices=["mp4", "mkv"], required=False, allow_null=True
     )
-    audio_multistreams = serializers.BooleanField(
-        required=False, allow_null=True
-    )
-    audio_languages = serializers.CharField(required=False, allow_null=True)
     autodelete_days = serializers.IntegerField(required=False, allow_null=True)
     index_playlists = serializers.BooleanField(required=False, allow_null=True)
     integrate_sponsorblock = serializers.BooleanField(
@@ -68,16 +64,10 @@ class ChannelSerializer(serializers.Serializer):
     channel_tags = serializers.ListField(
         child=serializers.CharField(), required=False
     )
-    # fork: generic_downloads — fallback channels (non-YouTube) may not have
-    # channel_tabs populated; make it optional with a safe default.
     channel_tabs = serializers.ListField(
         child=serializers.ChoiceField(VideoTypeEnum.values_known()),
-        required=False,
-        default=list,
+        required=True,
     )
-    # fork: generic_downloads — original platform channel page URL stored by
-    # GenericChannelFallbackEnricher; absent on YouTube channels.
-    channel_source_url = serializers.CharField(allow_null=True, required=False)
     _index = serializers.CharField(required=False)
     _score = serializers.IntegerField(required=False)
 
