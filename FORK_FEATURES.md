@@ -1,100 +1,128 @@
 # Fork features
 
-This fork keeps optional behavior behind explicit integration points. The
-current feature set is audio-track archiving; generic URL downloads and the
-old Python range streamer are intentionally removed.
+This fork contains two kinds of additions:
 
-## Layout
+- **Optional extensions** contribute settings or lifecycle behavior through the
+  fork registries. Audio-track archiving is currently the only optional
+  extension.
+- **Fork infrastructure** replaces or augments an upstream workflow and is
+  always active. Asynchronous, range-capable playback is fork infrastructure;
+  it is not a registry-enabled option.
+
+Generic URL downloads, the Python range streamer, and the global asyncio patch
+are intentionally removed.
+
+## Source-change rule
+
+Substantial fork behavior must live under `backend/fork_features/` or
+`frontend/src/fork_features/`. Upstream-owned files may contain only the
+smallest framework-required import, dispatch, type, route, or render hook. Do
+not move feature algorithms, migrations, cleanup, task implementation, or UI
+sections into core files.
+
+When a new core boundary is unavoidable:
+
+1. Define a narrow feature-owned interface.
+2. Add the smallest possible call site in core.
+3. Test the feature implementation and the integration boundary.
+4. Document the hook in the table below before merging.
+
+## Layout and loading
 
 ```text
 backend/fork_features/
-  apps.py                 Django loader
-  registry.py             validated contribution registry
-  audio_tracks/           language discovery, download hook, muxing, metadata
+  apps.py                 loads self-registering optional extensions
+  registry.py             validates extension contributions
+  startup.py              single startup/config integration surface
+  audio_tracks/           settings, discovery, download, mux, migrations
+  playback/               paths, request handling, task, repair, cleanup
 frontend/src/fork_features/
-  registry.ts             settings and stream-label registries
-  audioTracks/             feature-owned settings UI and labels
+  registry.ts             feature-owned UI and stream-label slots
+  audioTracks/            audio settings UI and labels
+  playback/               playback preparation hook and status UI
 ```
 
-`fork_features.apps.ForkFeaturesConfig` imports each enabled backend feature
-once at Django startup. A feature registers only the contributions it owns:
+`ForkFeaturesConfig.ready()` imports optional extensions whose package-level
+`register()` call contributes configuration defaults, serializer fields,
+channel overwrite keys, download hooks, or media-stream enrichers. The registry
+rejects duplicate feature IDs and conflicting contribution keys. Fork
+infrastructure such as playback is imported only by its required framework
+hooks and does not call `register()`.
 
-```python
-register(
-    feature_id="audio_tracks",
-    config_defaults={"audio_multistreams": False, "audio_languages": None},
-    app_serializer_fields={...},
-    channel_serializer_fields={...},
-    channel_overwrite_keys=["audio_multistreams", "audio_languages"],
-    download_hook=AudioTracksDownloadHook(),
-    media_stream_enricher=AudioTracksMediaStreamEnricher(),
-)
-```
+## Core integration boundaries
 
-The registry rejects duplicate feature IDs and duplicate contribution keys.
-Core code consumes these accessors at configuration, serializer, channel
-overwrite, download, and media-stream boundaries; it does not import feature
-implementation details.
+| Area | Thin core responsibility | Feature-owned implementation |
+| --- | --- | --- |
+| Django loading | Install `fork_features` | `apps.py`, `registry.py` |
+| Configuration/schema | Merge registered defaults/fields and map stored keys | audio registration and ES mapping |
+| Downloads/media metadata | Invoke registered hooks | `audio_tracks/` |
+| Settings UI | Render registered sections/labels | frontend registry and `audioTracks/` |
+| Startup | Call config migrations, cleanup, and data repairs | `fork_features/startup.py` |
+| Playback API | Route endpoints and delegate the view | `playback/views.py` |
+| Celery discovery | Re-export `prepare_playback` | `playback/tasks.py` |
+| Archive replacement | Call cache invalidation | `playback/cache.py` |
+| Browser playback | Call the preparation hook and render status | `frontend/src/fork_features/playback/` |
+| Range serving | Provide internal Nginx locations | protected media/transcode locations |
 
 ## Audio-track behavior
 
-When `audio_multistreams` is enabled, the hook first performs a normal primary
-download using the effective user/channel format and container. It then
-downloads requested or discovered additional languages into a private
-temporary directory and asks ffmpeg to append them. If discovery, an extra
-download, or muxing fails, the primary file is left untouched and archived.
-This is deliberately silent best-effort behavior.
+When `audio_multistreams` is enabled, the normal primary download retains the
+effective user or channel format and container. The post-download hook attempts
+to stage each explicitly requested language for which yt-dlp exposes a usable
+DASH or HLS format. With no explicit languages, it discovers available tracks;
+a single discovered language is skipped because the primary already supplies
+it. Individual extraction/download failures and incompatible container codecs
+leave the primary download untouched and do not block archival.
 
-`audio_languages` accepts comma-separated BCP-47-style values (`en`, `es-419`,
-`zh-Hans`). Values are normalized and deduplicated. An empty value means
-auto-discover all available languages. The primary stream remains the normal
-effective yt-dlp download; every selected/discovered language is downloaded as
-an additional stream. If the primary already contains one of those languages,
-the resulting file may contain a duplicate track, but the primary stream stays
-first and playback remains deterministic.
+`audio_languages` accepts comma-separated BCP-47-style values such as `en`,
+`es-419`, and `zh-Hans`. Values are normalized and deduplicated. An empty value
+enables discovery. Appended tracks receive language and title metadata, while
+the primary stream remains first. The feature does not force MKV, replace the
+configured format, or enable yt-dlp's multistream selector.
 
-The feature never forces MKV, replaces the configured format, or enables
-yt-dlp's multistream selector. The output extension stays aligned with the
-effective container. ffmpeg metadata enrichment exposes language, title,
-channel count, and layout to the existing stream serializer.
+Staging uses private `ta-audio-*` temporary directories. Normal completion
+removes them in `finally`; startup cleanup reclaims directories left by an
+interrupted worker.
 
 ## Playback preparation
 
-The `/api/video/<id>/stream/` endpoint serves MP4 files through an internal
-Nginx `X-Accel-Redirect`. Other containers return `202` and enqueue the
-`prepare_playback` Celery task. Redis records `pending`, `preparing`, `ready`,
-or `failed` state and a per-video lock prevents duplicate ffmpeg work. The
-status endpoint is `/api/video/<id>/stream/status/`. Nginx serves completed
-files from internal range-capable locations; request-time Django ffmpeg and
-the global asyncio monkey patch are gone.
+`/api/video/<id>/stream/` authorizes and serves archived MP4 files through an
+internal Nginx `X-Accel-Redirect`. Other source containers return `202`, enqueue
+the `prepare_playback` Celery task, and are transcoded to a persistent MP4 cache.
+The status endpoint is `/api/video/<id>/stream/status/`.
 
-## Configuration ownership and migration
+Redis records `pending`, `preparing`, `ready`, or `failed`. An ownership-token
+lock is renewed throughout ffmpeg execution and released only by its owner.
+Completed cache files are authoritative even after Redis expiry or restart.
+Startup removes request-scoped Redis state but preserves completed transcodes.
+Both original and prepared files are served by internal, range-capable Nginx
+locations rather than through Django.
 
-Audio keys are registered by the feature, not duplicated in core config or
-serializer declarations. Startup merges feature defaults before adding or
-removing keys. A one-time migration copies the old singular application key
-`audio_multistream` to `audio_multistreams`, and an Elasticsearch migration
-does the same for channel overwrites without discarding values.
+## Idempotent startup repairs
 
-## Adding another feature
+Feature repairs run even when the release-wide migration skip flag is set:
 
-1. Add `backend/fork_features/<name>/__init__.py` and call `register()`.
-2. Import it in `ForkFeaturesConfig.ready()`.
-3. Keep frontend components under `frontend/src/fork_features/<name>/` and add
-   them to the appropriate registry arrays.
-4. Add focused tests for registry collisions and each integration boundary.
+- Audio config repair copies `audio_multistream` to `audio_multistreams` before
+  core removes obsolete keys. The channel repair performs the equivalent
+  Elasticsearch update without overwriting an existing plural value.
+- Playback repair resolves stale indexed `.mkv` paths when the corresponding
+  archived media exists under another supported extension.
 
-Do not add generic URL resolvers, source-URL fields, request-time media
-transcoders, or duplicate settings controls. If a feature needs a new core
-boundary, document and test that boundary here first.
+These are retry-safe startup repairs, not version-marker migrations. Their
+queries become no-ops after the stored data is corrected.
 
-## Removed fork features
+## Adding an optional extension
 
-`generic_downloads` was removed because it made YouTube-specific queue,
-identity, channel, metadata, and security assumptions ambiguous while its
-resolver was not consistently registered. Existing Elasticsearch documents
-are not deleted automatically; they remain available for inspection or manual
-cleanup, but new queue and playback flows only support native YouTube data.
+1. Create `backend/fork_features/<name>/` and call `register()` from its
+   `__init__.py`.
+2. Import that package in `ForkFeaturesConfig.ready()`.
+3. Put frontend sections under `frontend/src/fork_features/<name>/` and add
+   them to the relevant frontend registry list.
+4. Put migrations and cleanup in the feature package and expose them through
+   `fork_features/startup.py`.
+5. Add tests for registration collisions, success, partial failure, cleanup,
+   and every new core boundary.
 
-The old `streaming.py` helper and `quiet_asyncio` loop patch were removed in
-favor of the asynchronous playback path above.
+Do not add generic URL resolvers, source-URL fields, request-time transcoders,
+duplicate settings controls, or feature-specific algorithms to upstream-owned
+modules.

@@ -14,6 +14,8 @@ import { useSearchParams } from 'react-router-dom';
 import getApiUrl from '../configuration/getApiUrl';
 import { useKeyPress } from '../functions/useKeypressHook';
 import { VideoResponseType } from '../api/loader/loadVideoById';
+import PlaybackPreparationStatus from '../fork_features/playback/PlaybackPreparationStatus';
+import usePlaybackPreparation from '../fork_features/playback/usePlaybackPreparation';
 
 const VIDEO_PLAYBACK_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3];
 
@@ -128,20 +130,6 @@ const VideoPlayer = ({
   setSeekToTimestamp,
 }: VideoPlayerProps) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [isTranscoding, setIsTranscoding] = useState(false);
-  const [playbackError, setPlaybackError] = useState<string | null>(null);
-  const [retryKey, setRetryKey] = useState(0);
-
-  // If the video element errors (e.g. server returned 202 Transcoding),
-  // show a message and automatically retry after 5 seconds.
-  useEffect(() => {
-    if (!isTranscoding) return;
-    const timer = setTimeout(() => {
-      setIsTranscoding(false);
-      setRetryKey((k: number) => k + 1);
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [isTranscoding]);
 
   useEffect(() => {
     if (seekToTimestamp === undefined || !videoRef.current) {
@@ -198,6 +186,7 @@ const VideoPlayer = ({
 
   const videoId = video.youtube_id;
   const videoUrl = `/api/video/${video.youtube_id}/stream/`;
+  const playbackPreparation = usePlaybackPreparation(videoUrl);
   const videoThumbUrl = video.vid_thumb_url;
   const watched = video.player.watched;
   const duration = video.player.duration;
@@ -427,13 +416,13 @@ const VideoPlayer = ({
         className={embed ? '' : `player-wrapper ${isTheaterMode ? 'theater-mode' : ''}`}
       >
         <div className={embed ? '' : `video-main ${isTheaterMode ? 'theater-mode' : ''}`}>
-          {isTranscoding && (
-            <p className="video-transcoding">Transcoding video for browser playback, retrying in 5 seconds…</p>
-          )}
-          {playbackError && <p className="settings-error">{playbackError}</p>}
+          <PlaybackPreparationStatus
+            isPreparing={playbackPreparation.isPreparing}
+            error={playbackPreparation.error}
+          />
           <video
             ref={videoRef}
-            key={`${getApiUrl()}${videoUrl}-${retryKey}`}
+            key={`${getApiUrl()}${videoUrl}-${playbackPreparation.retryKey}`}
             poster={`${getApiUrl()}${videoThumbUrl}`}
             onVolumeChange={(videoTag: VideoTag) => {
               localStorage.setItem('playerVolume', videoTag.currentTarget.volume.toString());
@@ -463,22 +452,7 @@ const VideoPlayer = ({
               });
             }}
             onEnded={handleVideoEnd(videoId, watched)}
-            onError={async () => {
-              try {
-                const res = await fetch(`${getApiUrl()}${videoUrl}`, { method: 'HEAD' });
-                if (res.status === 202) {
-                  setIsTranscoding(true);
-                  setPlaybackError(null);
-                } else if (!res.ok) {
-                  const payload = await res.json().catch(() => undefined);
-                  setPlaybackError(payload?.error || 'Video playback preparation failed.');
-                } else {
-                  setPlaybackError(null);
-                }
-              } catch {
-                setPlaybackError('Unable to prepare this video for playback.');
-              }
-            }}
+            onError={playbackPreparation.handleError}
             onKeyDown={e => {
               if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
                 e.preventDefault();

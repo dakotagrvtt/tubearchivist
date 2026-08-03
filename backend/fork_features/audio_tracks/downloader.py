@@ -73,9 +73,12 @@ class AudioTracksDownloadHook:
         if not extra_formats:
             return {}
 
-        cache_dir = os.path.dirname(
-            str(obs.get("outtmpl", os.path.join("/tmp", "%(id)s.mp4")))
-        ) or os.getcwd()
+        cache_dir = (
+            os.path.dirname(
+                str(obs.get("outtmpl", os.path.join("/tmp", "%(id)s.mp4")))
+            )
+            or os.getcwd()
+        )
         os.makedirs(cache_dir, exist_ok=True)
         temp_dir = tempfile.mkdtemp(prefix=f"ta-audio-{youtube_id}-")
         output_template = str(obs.get("outtmpl", ""))

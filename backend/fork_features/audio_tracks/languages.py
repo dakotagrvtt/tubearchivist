@@ -168,9 +168,7 @@ def resolve_hls_audio_formats(
 
 def normalize_language_code(language: str) -> str:
     """Return an ISO-639-2 code suitable for container metadata."""
-    primary = (
-        (language or "").replace("_", "-").split("-")[0].strip().lower()
-    )
+    primary = (language or "").replace("_", "-").split("-")[0].strip().lower()
     if len(primary) == 2:
         converted = ISO639Utils.short2long(primary)
         return converted if converted and len(converted) == 3 else "und"

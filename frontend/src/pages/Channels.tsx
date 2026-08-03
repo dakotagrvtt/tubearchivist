@@ -17,11 +17,10 @@ import { useUserConfigStore } from '../stores/UserConfigStore';
 import updateUserConfig, { UserConfigType } from '../api/actions/updateUserConfig';
 import { ApiResponseType } from '../functions/APIClient';
 import { ViewStylesEnum, ViewStylesType } from '../configuration/constants/ViewStyle';
+import { AudioTracksChannelOverwrites } from '../fork_features/audioTracks/types';
 
 type ChannelOverwritesType = {
   download_format: string | null;
-  audio_multistreams: boolean | null;
-  audio_languages: string | null;
   autodelete_days: number | null;
   index_playlists: boolean | null;
   integrate_sponsorblock: boolean | null;
@@ -29,7 +28,7 @@ type ChannelOverwritesType = {
   subscriptions_live_channel_size: number | null;
   subscriptions_shorts_channel_size: number | null;
   [key: string]: unknown;
-};
+} & AudioTracksChannelOverwrites;
 
 export type ChannelType = {
   channel_active: boolean;

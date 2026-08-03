@@ -21,10 +21,14 @@ def count_audio_streams(path: str) -> int:
     """Count existing audio streams in a media file using ffprobe."""
     cmd = [
         "ffprobe",
-        "-v", "error",
-        "-select_streams", "a",
-        "-show_entries", "stream=index",
-        "-of", "csv=p=0",
+        "-v",
+        "error",
+        "-select_streams",
+        "a",
+        "-show_entries",
+        "stream=index",
+        "-of",
+        "csv=p=0",
         path,
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -38,7 +42,7 @@ def count_audio_streams(path: str) -> int:
     return len(output.splitlines())
 
 
-def merge_additional_audio_tracks(
+def merge_additional_audio_tracks(  # noqa: C901
     main_path: str, audio_tracks: list[tuple[str, str]]
 ) -> bool:
     """Merge extra audio tracks into the configured primary file via ffmpeg.
@@ -69,8 +73,10 @@ def merge_additional_audio_tracks(
         language_code = normalize_language_code(lang)
         lang_title = language_title(lang)
         cmd += [
-            f"-metadata:s:a:{audio_stream_idx}", f"language={language_code}",
-            f"-metadata:s:a:{audio_stream_idx}", f"title={lang_title}",
+            f"-metadata:s:a:{audio_stream_idx}",
+            f"language={language_code}",
+            f"-metadata:s:a:{audio_stream_idx}",
+            f"title={lang_title}",
         ]
 
     cmd += ["-c", "copy", output_path]

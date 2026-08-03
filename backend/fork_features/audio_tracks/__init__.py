@@ -10,13 +10,12 @@ loaded automatically when Django starts as long as
 ``fork_features`` is listed in ``INSTALLED_APPS``.
 """
 
-from rest_framework import serializers
-
 from fork_features.audio_tracks.downloader import AudioTracksDownloadHook
 from fork_features.audio_tracks.media_streams import (
     AudioTracksMediaStreamEnricher,
 )
 from fork_features.registry import register
+from rest_framework import serializers
 
 register(
     feature_id="audio_tracks",
@@ -25,9 +24,7 @@ register(
         "audio_languages": None,
     },
     app_serializer_fields={
-        "audio_multistreams": serializers.BooleanField(
-            required=False
-        ),
+        "audio_multistreams": serializers.BooleanField(required=False),
         "audio_languages": serializers.CharField(
             required=False, allow_null=True
         ),

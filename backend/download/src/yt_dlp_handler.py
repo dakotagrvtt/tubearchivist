@@ -20,10 +20,11 @@ from common.src.helper import (
     ignore_filelist,
     rand_sleep,
 )
-from common.src.ta_redis import RedisArchivist, RedisQueue
+from common.src.ta_redis import RedisQueue
 from common.src.urlparser import ParsedURLType
 from download.src.queue import PendingList
 from download.src.yt_dlp_base import YtWrap
+from fork_features.playback.cache import invalidate_playback_cache
 from fork_features.registry import get_download_hooks
 from playlist.src.index import YoutubePlaylist
 from video.src.comments import CommentList
@@ -208,9 +209,7 @@ class VideoDownloader(DownloaderBase):
         if overwrites and overwrites.get("download_container"):
             container = overwrites.get("download_container")
             obs["merge_output_format"] = container
-            obs["outtmpl"] = (
-                self.CACHE_DIR + f"/download/%(id)s.{container}"
-            )
+            obs["outtmpl"] = self.CACHE_DIR + f"/download/%(id)s.{container}"
 
     def _dl_single_vid(self, youtube_id: str, channel_id: str) -> bool:
         """download one video and run fork-feature hooks around it"""
@@ -290,21 +289,7 @@ class VideoDownloader(DownloaderBase):
         media_file = vid_dict["youtube_id"] + media_ext
         old_path = os.path.join(self.CACHE_DIR, "download", media_file)
         new_path = os.path.join(self.MEDIA_DIR, vid_dict["media_url"])
-        # A redownload replaces the source media; never serve a transcode
-        # generated from the previous file with the same video ID.
-        stale_playback = os.path.join(
-            self.CACHE_DIR, "transcode", f"{vid_dict['youtube_id']}.mp4"
-        )
-        for stale_path in (
-            stale_playback,
-            f"{stale_playback}.part",
-            f"{stale_playback}.part.mp4",
-        ):
-            try:
-                os.remove(stale_path)
-            except FileNotFoundError:
-                pass
-        RedisArchivist().del_message(f"playback:{vid_dict['youtube_id']}")
+        invalidate_playback_cache(vid_dict["youtube_id"])
         # move media file and fix permission
         shutil.move(old_path, new_path, copy_function=shutil.copyfile)
         if host_uid and host_gid:

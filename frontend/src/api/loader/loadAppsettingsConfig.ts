@@ -1,4 +1,5 @@
 import APIClient from '../../functions/APIClient';
+import { AudioTracksDownloadsConfig } from '../../fork_features/audioTracks/types';
 
 export type AppSettingsConfigType = {
   subscriptions: {
@@ -27,10 +28,8 @@ export type AppSettingsConfigType = {
     extractor_lang: string | null;
     integrate_ryd: boolean;
     integrate_sponsorblock: boolean;
-    audio_multistreams?: boolean;
-    audio_languages?: string | null;
     [key: string]: unknown;
-  };
+  } & AudioTracksDownloadsConfig;
   application: {
     enable_snapshot: boolean;
     enable_cast: boolean;

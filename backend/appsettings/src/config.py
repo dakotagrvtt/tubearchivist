@@ -189,19 +189,6 @@ class AppConfig:
 
         return updated
 
-    def migrate_legacy_audio_keys(self) -> list[str]:
-        """Copy the old singular audio key before old keys are pruned."""
-        downloads = self.config.get("downloads", {})
-        if (
-            "audio_multistream" not in downloads
-            or "audio_multistreams" in downloads
-        ):
-            return []
-
-        value = downloads["audio_multistream"]
-        self.update_config({"downloads": {"audio_multistreams": value}})
-        return ["downloads.audio_multistream -> downloads.audio_multistreams"]
-
     def clear_old_keys(self) -> list[str]:
         """clear old unused keys"""
         cleared = []
@@ -213,9 +200,7 @@ class AppConfig:
                 cleared.append(str({key: value}))
                 continue
 
-            expected_keys = set(
-                effective[key].keys()  # type: ignore
-            )
+            expected_keys = set(effective[key].keys())  # type: ignore
             is_keys = set(self.config[key].keys())
 
             for to_delete in is_keys - expected_keys:

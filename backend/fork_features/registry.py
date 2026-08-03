@@ -104,9 +104,9 @@ def register(
     *,
     config_defaults: dict[str, Any] | None = None,
     app_serializer_fields: dict[str, "drf_serializers.Field"] | None = None,
-    channel_serializer_fields: dict[
-        str, "drf_serializers.Field"
-    ] | None = None,
+    channel_serializer_fields: (
+        dict[str, "drf_serializers.Field"] | None
+    ) = None,
     channel_overwrite_keys: list[str] | None = None,
     download_hook: DownloadHook | None = None,
     media_stream_enricher: MediaStreamEnricher | None = None,
