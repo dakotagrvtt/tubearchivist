@@ -2,8 +2,22 @@
 
 from pathlib import Path
 
+import pytest
 from common.src.env_settings import EnvironmentSettings
 from fork_features.playback import tasks
+
+
+@pytest.fixture(autouse=True)
+def _playback_enabled(monkeypatch):
+    monkeypatch.setattr(
+        tasks,
+        "AppConfig",
+        lambda: type(
+            "Config",
+            (),
+            {"config": {"application": {"enable_fork_playback": True}}},
+        )(),
+    )
 
 
 class _Connection:
@@ -26,9 +40,13 @@ class _Redis:
     def __init__(self):
         self.conn = _Connection()
         self.messages = []
+        self.deleted = []
 
     def set_message(self, key, message, expire=None):
         self.messages.append((key, message, expire))
+
+    def del_message(self, key):
+        self.deleted.append(key)
 
 
 def test_lock_renewal_uses_owner_token_and_refreshes_status():
@@ -101,3 +119,22 @@ def test_failed_ffmpeg_removes_partial_output(monkeypatch, tmp_path):
     assert result == "failed"
     assert not (cache / "transcode" / "video.mp4.part.mp4").exists()
     assert redis.messages[-1][1]["status"] == "failed"
+
+
+def test_disabled_playback_task_does_not_acquire_lock(monkeypatch):
+    """A queued task must become a no-op after the feature is disabled."""
+    redis = _Redis()
+    monkeypatch.setattr(tasks, "RedisArchivist", lambda: redis)
+    monkeypatch.setattr(
+        tasks,
+        "AppConfig",
+        lambda: type(
+            "Config",
+            (),
+            {"config": {"application": {"enable_fork_playback": False}}},
+        )(),
+    )
+
+    assert tasks.prepare_playback.run("video", "video.mkv") == "disabled"
+    assert redis.deleted == ["playback:video"]
+    assert redis.conn.set_calls == []

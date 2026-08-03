@@ -20,3 +20,4 @@ class ForkFeaturesConfig(AppConfig):
         # that feature's __init__.py.  Add a new line here for each feature.
 
         import fork_features.audio_tracks  # noqa: F401
+        import fork_features.playback  # noqa: F401

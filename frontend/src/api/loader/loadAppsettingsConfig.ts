@@ -1,5 +1,6 @@
 import APIClient from '../../functions/APIClient';
 import { AudioTracksDownloadsConfig } from '../../fork_features/audioTracks/types';
+import { ForkFeatureApplicationConfig } from '../../fork_features/types';
 
 export type AppSettingsConfigType = {
   subscriptions: {
@@ -33,7 +34,7 @@ export type AppSettingsConfigType = {
   application: {
     enable_snapshot: boolean;
     enable_cast: boolean;
-  };
+  } & ForkFeatureApplicationConfig;
 };
 
 const loadAppsettingsConfig = async () => {

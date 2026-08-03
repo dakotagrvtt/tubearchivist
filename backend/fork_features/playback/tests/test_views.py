@@ -1,6 +1,20 @@
 """Tests for playback status and accelerated responses."""
 
+import pytest
 from fork_features.playback import views
+
+
+@pytest.fixture(autouse=True)
+def _playback_enabled(monkeypatch):
+    monkeypatch.setattr(
+        views,
+        "AppConfig",
+        lambda: type(
+            "Config",
+            (),
+            {"config": {"application": {"enable_fork_playback": True}}},
+        )(),
+    )
 
 
 class _View:
@@ -138,3 +152,32 @@ def test_non_mp4_stream_queues_preparation(monkeypatch, tmp_path):
         {"status": "preparing"},
         300,
     )
+
+
+def test_disabled_playback_does_not_read_media_or_queue(monkeypatch):
+    """The master switch must stop the fork endpoint before any work starts."""
+
+    class FakeResponse(dict):
+        def __init__(self, data, status=200):
+            super().__init__()
+            self.data = data
+            self.status_code = status
+
+    monkeypatch.setattr(
+        views,
+        "AppConfig",
+        lambda: type(
+            "Config",
+            (),
+            {"config": {"application": {"enable_fork_playback": False}}},
+        )(),
+    )
+    monkeypatch.setattr(views, "Response", FakeResponse)
+    handler = views.PlaybackViewHandler(_View())
+
+    response = handler.stream(
+        type("Request", (), {"method": "GET"})(), "video"
+    )
+
+    assert response.status_code == 404
+    assert response.data == {"error": "enhanced playback is disabled"}

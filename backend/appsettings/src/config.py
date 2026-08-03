@@ -14,6 +14,9 @@ from appsettings.src.snapshot import ElasticSnapshot
 from common.src.es_connect import ElasticWrap
 from common.src.ta_redis import RedisArchivist
 from django.conf import settings
+from fork_features.registry import (
+    get_application_config_defaults as _fork_application_defaults,
+)
 from fork_features.registry import get_config_defaults as _fork_config_defaults
 
 
@@ -56,6 +59,8 @@ class ApplicationConfigType(TypedDict):
 
     enable_snapshot: bool
     enable_cast: bool
+    enable_fork_audio_tracks: bool
+    enable_fork_playback: bool
 
 
 class AppConfigType(TypedDict):
@@ -164,9 +169,12 @@ class AppConfig:
         return ElasticWrap(self.ES_PATH).post(self._effective_defaults())
 
     def _effective_defaults(self) -> AppConfigType:
-        """Return defaults merged with fork-feature download defaults."""
+        """Return defaults merged with fork-feature defaults."""
         merged = copy.deepcopy(self.CONFIG_DEFAULTS)
         merged["downloads"].update(_fork_config_defaults())  # type: ignore
+        merged["application"].update(  # type: ignore
+            _fork_application_defaults()
+        )
         return merged
 
     def add_new_defaults(self) -> list[str]:

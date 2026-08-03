@@ -6,10 +6,12 @@ import os
 import secrets
 import subprocess
 
+from appsettings.src.config import AppConfig
 from celery import shared_task
 from common.src.env_settings import EnvironmentSettings
 from common.src.ta_redis import RedisArchivist
 from fork_features.playback.media_paths import safe_path
+from fork_features.registry import is_feature_enabled
 
 PLAYBACK_LOCK_TTL = 60 * 60
 PLAYBACK_LOCK_RENEW_INTERVAL = 5 * 60
@@ -176,8 +178,15 @@ def _run_ffmpeg_with_lease(
 
 
 @shared_task(name="prepare_playback")
-def prepare_playback(video_id: str, media_url: str) -> str:
+def prepare_playback(video_id: str, media_url: str) -> str:  # noqa: C901
     """Transcode one source file once, outside the request process."""
+    if not is_feature_enabled("playback", AppConfig().config):
+        try:
+            RedisArchivist().del_message(playback_status_key(video_id))
+        except Exception as error:  # pragma: no cover - Redis boundary
+            print(f"{video_id}: failed to clear disabled playback: {error}")
+        return "disabled"
+
     redis = RedisArchivist()
     lock_key = redis.NAME_SPACE + playback_lock_key(video_id)
     status_key = playback_status_key(video_id)

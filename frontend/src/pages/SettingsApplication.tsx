@@ -9,7 +9,9 @@ import queueSnapshot from '../api/actions/queueSnapshot';
 import deleteApiToken from '../api/actions/deleteApiToken';
 import Button from '../components/Button';
 import loadAppsettingsConfig, { AppSettingsConfigType } from '../api/loader/loadAppsettingsConfig';
-import updateAppsettingsConfig from '../api/actions/updateAppsettingsConfig';
+import updateAppsettingsConfig, {
+  AppSettingsConfigUpdate,
+} from '../api/actions/updateAppsettingsConfig';
 import loadApiToken from '../api/loader/loadApiToken';
 import InputConfig from '../components/InputConfig';
 import ToggleConfig from '../components/ToggleConfig';
@@ -19,7 +21,7 @@ import deleteCookie from '../api/actions/deleteCookie';
 import validateCookie from '../api/actions/validateCookie';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import MembershipAppsettings from '../components/MembershipAppsettings';
-import { APP_SETTINGS_SECTIONS } from '../fork_features/registry';
+import { APP_SETTINGS_SECTIONS, APPLICATION_SETTINGS_SECTIONS } from '../fork_features/registry';
 import { getApiErrorMessage } from '../functions/APIClient';
 
 type SettingsApplicationReponses = {
@@ -149,7 +151,7 @@ const SettingsApplication = () => {
     configValue: string | boolean | number | null,
   ) => {
     const [group, key] = configKey.split('.');
-    const updatedConfig = { [group]: { [key]: configValue } } as Partial<AppSettingsConfigType>;
+    const updatedConfig = { [group]: { [key]: configValue } } as AppSettingsConfigUpdate;
     try {
       const response = await updateAppsettingsConfig(updatedConfig);
       if (response?.error?.error) {
@@ -480,8 +482,8 @@ const SettingsApplication = () => {
                       files.
                     </li>
                     <li>
-                      Enable multistream audio to archive additional audio languages when they
-                      are available. This increases file size.
+                      Enable multistream audio to archive additional audio languages when they are
+                      available. This increases file size.
                     </li>
                   </ul>
                 </div>
@@ -886,6 +888,24 @@ const SettingsApplication = () => {
                   updateCallback={handleUpdateConfig}
                 />
               </div>
+            </div>
+            <div className="info-box-item">
+              <h2 id="fork-features">Fork Features</h2>
+              {userConfig.show_help_text && (
+                <div className="help-text">
+                  <p>
+                    Fork features are enabled by default. Disabling a feature stops new fork-only
+                    runtime work while preserving its existing settings and media.
+                  </p>
+                </div>
+              )}
+              {APPLICATION_SETTINGS_SECTIONS.map((Section, i) => (
+                <Section
+                  key={i}
+                  appSettingsConfig={appSettingsConfig}
+                  onRefresh={() => setRefresh(true)}
+                />
+              ))}
             </div>
             <div className="info-box-item">
               <MembershipAppsettings show_help_text={userConfig.show_help_text} />

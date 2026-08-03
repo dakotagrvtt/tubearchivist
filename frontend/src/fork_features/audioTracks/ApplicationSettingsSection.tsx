@@ -10,30 +10,37 @@
  */
 
 import { useState, useEffect } from 'react';
-import updateAppsettingsConfig from '../../api/actions/updateAppsettingsConfig';
+import updateAppsettingsConfig, {
+  AppSettingsConfigUpdate,
+} from '../../api/actions/updateAppsettingsConfig';
 import ToggleConfig from '../../components/ToggleConfig';
 import AudioLanguageSelector from './AudioLanguageSelector';
 import { AppSettingsSectionProps } from '../registry';
 import { getApiErrorMessage } from '../../functions/APIClient';
 
 const AudioTracksAppSection = ({ appSettingsConfig, onRefresh }: AppSettingsSectionProps) => {
+  const audioTracksEnabled = appSettingsConfig.application.enable_fork_audio_tracks ?? true;
   const [audioMultistreams, setAudioMultistreams] = useState(false);
   const [audioLanguages, setAudioLanguages] = useState<string | null>(null);
   const [audioWarning, setAudioWarning] = useState<string | null>(null);
 
   // Sync local state when the parent config refreshes.
   useEffect(() => {
+    if (!audioTracksEnabled) {
+      return;
+    }
     setAudioMultistreams(appSettingsConfig.downloads.audio_multistreams ?? false);
     setAudioLanguages(appSettingsConfig.downloads.audio_languages || null);
     setAudioWarning(null);
-  }, [appSettingsConfig]);
+  }, [appSettingsConfig, audioTracksEnabled]);
 
-  const handleUpdate = async (
-    configKey: string,
-    configValue: string | boolean | number | null,
-  ) => {
+  if (!audioTracksEnabled) {
+    return null;
+  }
+
+  const handleUpdate = async (configKey: string, configValue: string | boolean | number | null) => {
     const [group, key] = configKey.split('.');
-    const updatedConfig = { [group]: { [key]: configValue } };
+    const updatedConfig = { [group]: { [key]: configValue } } as AppSettingsConfigUpdate;
     try {
       const response = await updateAppsettingsConfig(updatedConfig);
       if (response?.error?.error) {

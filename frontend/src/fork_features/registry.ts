@@ -63,7 +63,9 @@ export type VideoStreamFormatter = (stream: VideoStreamType) => string | null;
 // ---------------------------------------------------------------------------
 
 import AudioTracksAppSection from './audioTracks/ApplicationSettingsSection';
+import AudioTracksFeatureToggle from './audioTracks/ApplicationFeatureToggle';
 import AudioTracksChannelSection from './audioTracks/ChannelSettingsSection';
+import PlaybackFeatureToggle from './playback/ApplicationFeatureToggle';
 import { formatAudioTrackStreamLabel } from './audioTracks/streamLabels';
 
 /**
@@ -72,6 +74,14 @@ import { formatAudioTrackStreamLabel } from './audioTracks/streamLabels';
  */
 export const APP_SETTINGS_SECTIONS: ComponentType<AppSettingsSectionProps>[] = [
   AudioTracksAppSection,
+];
+
+/**
+ * Fork-feature master switches rendered in the Application Settings page.
+ */
+export const APPLICATION_SETTINGS_SECTIONS: ComponentType<AppSettingsSectionProps>[] = [
+  AudioTracksFeatureToggle,
+  PlaybackFeatureToggle,
 ];
 
 /**

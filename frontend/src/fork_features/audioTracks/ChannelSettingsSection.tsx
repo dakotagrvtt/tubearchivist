@@ -20,6 +20,7 @@ const AudioTracksChannelSection = ({
   appSettingsConfig,
   onRefresh,
 }: ChannelSettingsSectionProps) => {
+  const audioTracksEnabled = appSettingsConfig.application.enable_fork_audio_tracks ?? true;
   // null means "use global setting" (no per-channel overwrite stored).
   const [audioMultistreams, setAudioMultistreams] = useState<boolean | null>(null);
   const [audioLanguages, setAudioLanguages] = useState<string | null>(null);
@@ -35,10 +36,11 @@ const AudioTracksChannelSection = ({
   const globalAudioMultistream = appSettingsConfig.downloads.audio_multistreams ?? false;
   const effectiveAudioMultistream = audioMultistreams ?? globalAudioMultistream;
 
-  const handleUpdate = async (
-    configKey: string,
-    configValue: string | boolean | number | null,
-  ) => {
+  if (!audioTracksEnabled) {
+    return null;
+  }
+
+  const handleUpdate = async (configKey: string, configValue: string | boolean | number | null) => {
     try {
       const response = await updateChannelOverwrites(channel.channel_id, configKey, configValue);
       if (response?.error?.error) {

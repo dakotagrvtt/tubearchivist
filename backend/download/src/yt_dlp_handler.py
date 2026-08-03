@@ -216,7 +216,7 @@ class VideoDownloader(DownloaderBase):
         obs = self.obs.copy()
         self._set_overwrites(obs, channel_id)
         dl_cache = os.path.join(self.CACHE_DIR, "download")
-        hooks = get_download_hooks()
+        hooks = get_download_hooks(self.config)
         hook_contexts = []
         success = False
         message = "download failed"

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import getApiUrl from '../../configuration/getApiUrl';
+import { useAppSettingsStore } from '../../stores/AppSettingsStore';
+
+const PLAYBACK_DISABLED_ERROR = 'enhanced playback is disabled';
 
 type PlaybackPreparationState = {
   videoUrl: string;
@@ -15,7 +18,22 @@ const initialState = (videoUrl: string): PlaybackPreparationState => ({
   retryKey: 0,
 });
 
-const usePlaybackPreparation = (videoUrl: string) => {
+const disablePlaybackForSession = () => {
+  useAppSettingsStore.setState(state => ({
+    appSettingsConfig: {
+      ...state.appSettingsConfig,
+      application: {
+        ...state.appSettingsConfig.application,
+        enable_fork_playback: false,
+      },
+    },
+  }));
+};
+
+const usePlaybackPreparation = (videoId: string, mediaUrl: string) => {
+  const playbackEnabled =
+    useAppSettingsStore(state => state.appSettingsConfig.application.enable_fork_playback) ?? true;
+  const videoUrl = playbackEnabled ? `/api/video/${videoId}/stream/` : mediaUrl;
   const [state, setState] = useState(() => initialState(videoUrl));
   const current = state.videoUrl === videoUrl ? state : initialState(videoUrl);
 
@@ -36,6 +54,11 @@ const usePlaybackPreparation = (videoUrl: string) => {
   }, [current.isPreparing, videoUrl]);
 
   const handleError = useCallback(async () => {
+    if (!playbackEnabled) {
+      setState({ ...current, error: 'Video could not be loaded.' });
+      return;
+    }
+
     try {
       const response = await fetch(`${getApiUrl()}${videoUrl}`, {
         method: 'HEAD',
@@ -55,6 +78,10 @@ const usePlaybackPreparation = (videoUrl: string) => {
 
       const statusResponse = await fetch(`${getApiUrl()}${videoUrl}status/`);
       const payload = await statusResponse.json().catch(() => undefined);
+      if (payload?.error === PLAYBACK_DISABLED_ERROR) {
+        disablePlaybackForSession();
+        return;
+      }
       setState({
         ...current,
         error: payload?.error || 'Video could not be loaded.',
@@ -62,9 +89,9 @@ const usePlaybackPreparation = (videoUrl: string) => {
     } catch {
       setState({ ...current, error: 'Unable to load this video.' });
     }
-  }, [current, videoUrl]);
+  }, [current, playbackEnabled, videoUrl]);
 
-  return { ...current, handleError };
+  return { ...current, handleError, videoUrl };
 };
 
 export default usePlaybackPreparation;

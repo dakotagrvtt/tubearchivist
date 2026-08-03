@@ -8,6 +8,9 @@ from common.serializers import ValidateUnknownFieldsMixin
 from fork_features.registry import (
     get_app_serializer_fields as _fork_app_fields,
 )
+from fork_features.registry import (
+    get_application_serializer_fields as _fork_application_fields,
+)
 from rest_framework import serializers
 
 
@@ -82,6 +85,14 @@ class AppConfigAppSerializer(
 
     enable_snapshot = serializers.BooleanField()
     enable_cast = serializers.BooleanField()
+
+    def get_fields(self):
+        """Merge fork-feature application fields at runtime."""
+        fields = super().get_fields()
+        for name, field in _fork_application_fields().items():
+            if name not in fields:
+                fields[name] = copy.deepcopy(field)
+        return fields
 
 
 class AppConfigSerializer(ValidateUnknownFieldsMixin, serializers.Serializer):

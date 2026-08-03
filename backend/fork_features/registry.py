@@ -54,8 +54,11 @@ class _FeatureEntry:
     feature_id: str
     config_defaults: dict[str, Any] = field(default_factory=dict)
     app_serializer_fields: dict[str, Any] = field(default_factory=dict)
+    application_config_defaults: dict[str, Any] = field(default_factory=dict)
+    application_serializer_fields: dict[str, Any] = field(default_factory=dict)
     channel_serializer_fields: dict[str, Any] = field(default_factory=dict)
     channel_overwrite_keys: list[str] = field(default_factory=list)
+    enabled_config_key: str | None = None
     download_hook: DownloadHook | None = None
     media_stream_enricher: MediaStreamEnricher | None = None
 
@@ -76,15 +79,23 @@ def _check_unique(feature_id: str, values: list[str], kind: str) -> None:
             f"Fork feature '{feature_id}' declares duplicate {kind}: {names}"
         )
 
-    scope = (
-        "downloads"
-        if kind in {"config defaults", "app serializer fields"}
-        else "channel"
-    )
+    scope_by_kind = {
+        "config defaults": "downloads",
+        "app serializer fields": "downloads",
+        "application config defaults": "application",
+        "application serializer fields": "application",
+        "channel serializer fields": "channel",
+        "channel overwrite keys": "channel",
+    }
+    scope = scope_by_kind[kind]
     for existing in _registry:
         if scope == "downloads":
             existing_values = set(existing.config_defaults) | set(
                 existing.app_serializer_fields
+            )
+        elif scope == "application":
+            existing_values = set(existing.application_config_defaults) | set(
+                existing.application_serializer_fields
             )
         else:
             existing_values = set(existing.channel_serializer_fields) | set(
@@ -104,10 +115,15 @@ def register(
     *,
     config_defaults: dict[str, Any] | None = None,
     app_serializer_fields: dict[str, "drf_serializers.Field"] | None = None,
+    application_config_defaults: dict[str, Any] | None = None,
+    application_serializer_fields: (
+        dict[str, "drf_serializers.Field"] | None
+    ) = None,
     channel_serializer_fields: (
         dict[str, "drf_serializers.Field"] | None
     ) = None,
     channel_overwrite_keys: list[str] | None = None,
+    enabled_config_key: str | None = None,
     download_hook: DownloadHook | None = None,
     media_stream_enricher: MediaStreamEnricher | None = None,
 ) -> None:
@@ -117,10 +133,22 @@ def register(
 
     defaults = dict(config_defaults or {})
     app_fields = dict(app_serializer_fields or {})
+    application_defaults = dict(application_config_defaults or {})
+    application_fields = dict(application_serializer_fields or {})
     channel_fields = dict(channel_serializer_fields or {})
     overwrite_keys = list(channel_overwrite_keys or [])
     _check_unique(feature_id, list(defaults), "config defaults")
     _check_unique(feature_id, list(app_fields), "app serializer fields")
+    _check_unique(
+        feature_id,
+        list(application_defaults),
+        "application config defaults",
+    )
+    _check_unique(
+        feature_id,
+        list(application_fields),
+        "application serializer fields",
+    )
     _check_unique(
         feature_id, list(channel_fields), "channel serializer fields"
     )
@@ -131,8 +159,11 @@ def register(
             feature_id=feature_id,
             config_defaults=defaults,
             app_serializer_fields=app_fields,
+            application_config_defaults=application_defaults,
+            application_serializer_fields=application_fields,
             channel_serializer_fields=channel_fields,
             channel_overwrite_keys=overwrite_keys,
+            enabled_config_key=enabled_config_key,
             download_hook=download_hook,
             media_stream_enricher=media_stream_enricher,
         )
@@ -156,6 +187,47 @@ def get_app_serializer_fields() -> dict[str, Any]:
     return merged
 
 
+def get_application_config_defaults() -> dict[str, Any]:
+    """Return all feature-owned application defaults."""
+    merged: dict[str, Any] = {}
+    for entry in _registry:
+        merged.update(entry.application_config_defaults)
+    return merged
+
+
+def get_application_serializer_fields() -> dict[str, Any]:
+    """Return all feature-owned application serializer fields."""
+    merged: dict[str, Any] = {}
+    for entry in _registry:
+        merged.update(entry.application_serializer_fields)
+    return merged
+
+
+def is_feature_enabled(feature_id: str, config: dict[str, Any]) -> bool:
+    """Resolve a feature's application-level master switch.
+
+    Missing keys intentionally use the registered default. This keeps older
+    configurations enabled during the short window before startup adds the
+    new defaults to Elasticsearch.
+    """
+    entry = next(
+        (
+            candidate
+            for candidate in _registry
+            if candidate.feature_id == feature_id
+        ),
+        None,
+    )
+    if entry is None or entry.enabled_config_key is None:
+        return True
+
+    default = entry.application_config_defaults.get(
+        entry.enabled_config_key, True
+    )
+    application = config.get("application", {})
+    return bool(application.get(entry.enabled_config_key, default))
+
+
 def get_channel_serializer_fields() -> dict[str, Any]:
     """Return all feature-owned channel serializer fields."""
     merged: dict[str, Any] = {}
@@ -172,12 +244,15 @@ def get_channel_overwrite_keys() -> list[str]:
     return keys
 
 
-def get_download_hooks() -> list[DownloadHook]:
-    """Return download hooks in registration order."""
+def get_download_hooks(
+    config: dict[str, Any] | None = None,
+) -> list[DownloadHook]:
+    """Return enabled download hooks in registration order."""
     return [
         entry.download_hook
         for entry in _registry
         if entry.download_hook is not None
+        and is_feature_enabled(entry.feature_id, config or {})
     ]
 
 

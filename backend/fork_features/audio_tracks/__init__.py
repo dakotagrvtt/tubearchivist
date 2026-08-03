@@ -19,6 +19,10 @@ from rest_framework import serializers
 
 register(
     feature_id="audio_tracks",
+    application_config_defaults={"enable_fork_audio_tracks": True},
+    application_serializer_fields={
+        "enable_fork_audio_tracks": serializers.BooleanField(required=False),
+    },
     config_defaults={
         "audio_multistreams": False,
         "audio_languages": None,
@@ -38,6 +42,7 @@ register(
         ),
     },
     channel_overwrite_keys=["audio_multistreams", "audio_languages"],
+    enabled_config_key="enable_fork_audio_tracks",
     download_hook=AudioTracksDownloadHook(),
     media_stream_enricher=AudioTracksMediaStreamEnricher(),
 )

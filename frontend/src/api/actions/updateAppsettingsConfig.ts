@@ -1,10 +1,16 @@
 import APIClient from '../../functions/APIClient';
 import { AppSettingsConfigType } from '../loader/loadAppsettingsConfig';
 
-const updateAppsettingsConfig = async (updatedConfig: Partial<AppSettingsConfigType>) => {
-  return APIClient('/api/appsettings/config/', {
+export type AppSettingsConfigUpdate = {
+  subscriptions?: Partial<AppSettingsConfigType['subscriptions']>;
+  downloads?: Partial<AppSettingsConfigType['downloads']>;
+  application?: Partial<AppSettingsConfigType['application']>;
+};
+
+const updateAppsettingsConfig = async (updatedConfig: AppSettingsConfigUpdate) => {
+  return APIClient<AppSettingsConfigType>('/api/appsettings/config/', {
     method: 'POST',
-    body: updatedConfig,
+    body: updatedConfig as Record<string, unknown>,
   });
 };
 

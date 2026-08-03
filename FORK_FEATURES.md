@@ -5,9 +5,9 @@ This fork contains two kinds of additions:
 - **Optional extensions** contribute settings or lifecycle behavior through the
   fork registries. Audio-track archiving is currently the only optional
   extension.
-- **Fork infrastructure** replaces or augments an upstream workflow and is
-  always active. Asynchronous, range-capable playback is fork infrastructure;
-  it is not a registry-enabled option.
+- **Fork infrastructure** replaces or augments an upstream workflow. Enhanced
+  playback is registered as a default-on feature and can be disabled from
+  Application Settings when direct upstream media playback is preferred.
 
 Generic URL downloads, the Python range streamer, and the global asyncio patch
 are intentionally removed.
@@ -38,6 +38,7 @@ backend/fork_features/
   playback/               paths, request handling, task, repair, cleanup
 frontend/src/fork_features/
   registry.ts             feature-owned UI and stream-label slots
+  types.ts                feature-owned application settings types
   audioTracks/            audio settings UI and labels
   playback/               playback preparation hook and status UI
 ```
@@ -46,8 +47,30 @@ frontend/src/fork_features/
 `register()` call contributes configuration defaults, serializer fields,
 channel overwrite keys, download hooks, or media-stream enrichers. The registry
 rejects duplicate feature IDs and conflicting contribution keys. Fork
-infrastructure such as playback is imported only by its required framework
-hooks and does not call `register()`.
+infrastructure uses the same registration boundary when it needs an
+application-level master switch. Missing switches resolve to their registered
+default so older configurations remain enabled during startup synchronization.
+
+## Feature switches
+
+Users can manage fork features from **Settings → Application → Fork Features**.
+Both switches are enabled by default.
+
+| Setting | When enabled | When disabled |
+| --- | --- | --- |
+| Audio Tracks | Allows the Download Format and per-channel multistream settings to archive additional audio languages. | Stops additional-track downloads and hides their configuration controls. Existing multistream settings and archived tracks are preserved. |
+| Enhanced Playback | Serves MP4 files with range support and prepares non-MP4 files for browser playback. | Uses the original media URL directly and starts no new preparation tasks. Browser-incompatible containers such as MKV may not play. |
+
+Changes apply to new requests and jobs immediately. A player open in another
+browser session falls back to the direct media URL when the server reports that
+Enhanced Playback was disabled. A download or transcode already running may
+finish. Disabling a switch never deletes archived media, metadata, saved
+settings, or completed playback caches.
+
+The stored configuration keys are
+`application.enable_fork_audio_tracks` and
+`application.enable_fork_playback`. The Audio Tracks master switch takes
+precedence over global and per-channel `audio_multistreams` values.
 
 ## Core integration boundaries
 
@@ -86,10 +109,12 @@ interrupted worker.
 
 ## Playback preparation
 
-`/api/video/<id>/stream/` authorizes and serves archived MP4 files through an
-internal Nginx `X-Accel-Redirect`. Other source containers return `202`, enqueue
-the `prepare_playback` Celery task, and are transcoded to a persistent MP4 cache.
-The status endpoint is `/api/video/<id>/stream/status/`.
+When enabled, `/api/video/<id>/stream/` authorizes and serves archived MP4 files
+through an internal Nginx `X-Accel-Redirect`. Other source containers return
+`202`, enqueue the `prepare_playback` Celery task, and are transcoded to a
+persistent MP4 cache. The status endpoint is
+`/api/video/<id>/stream/status/`. When disabled, those fork endpoints return a
+feature-disabled error and the frontend uses the normal `/media/` URL.
 
 Redis records `pending`, `preparing`, `ready`, or `failed`. An ownership-token
 lock is renewed throughout ffmpeg execution and released only by its owner.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import mimetypes
 from typing import Any
 
+from appsettings.src.config import AppConfig
 from common.serializers import ErrorResponseSerializer
 from common.src.es_connect import ElasticWrap
 from common.src.ta_redis import RedisArchivist
@@ -19,6 +20,7 @@ from fork_features.playback.tasks import (
     playback_status_key,
     prepare_playback,
 )
+from fork_features.registry import is_feature_enabled
 from rest_framework.response import Response
 
 
@@ -120,8 +122,20 @@ class PlaybackViewHandler:
             return {"status": "pending"}
         return status or {"status": "pending"}
 
+    @staticmethod
+    def _feature_disabled_response():
+        return Response(
+            ErrorResponseSerializer(
+                {"error": "enhanced playback is disabled"}
+            ).data,
+            status=404,
+        )
+
     def stream(self, request, video_id: str):
         """Return an accelerated stream or queue browser preparation."""
+        if not is_feature_enabled("playback", AppConfig().config):
+            return self._feature_disabled_response()
+
         media_url, media_path, error = self._get_media(video_id)
         if error:
             return error
@@ -189,6 +203,9 @@ class PlaybackViewHandler:
 
     def status(self, video_id: str):
         """Return playback state without triggering preparation."""
+        if not is_feature_enabled("playback", AppConfig().config):
+            return self._feature_disabled_response()
+
         media_url, _, error = self._get_media(video_id)
         if error:
             return error
