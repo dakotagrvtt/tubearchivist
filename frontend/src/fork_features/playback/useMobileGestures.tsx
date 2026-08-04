@@ -98,11 +98,11 @@ export const useMobileGestures = (playerRef: React.RefObject<MediaPlayerInstance
         playerRef.current.volume = volume;
         if (volume > 0) playerRef.current.muted = false;
       }
-      showFeedback(`Volume ${Math.round(volume * 100)}%`);
+      showFeedback(`Player volume ${Math.round(volume * 100)}%`);
     } else {
       const nextBrightness = clamp(start.brightness + adjustment, 0.35, 1.5);
       setBrightness(nextBrightness);
-      showFeedback(`Brightness ${Math.round(nextBrightness * 100)}%`);
+      showFeedback(`Video brightness ${Math.round(nextBrightness * 100)}%`);
     }
   };
 

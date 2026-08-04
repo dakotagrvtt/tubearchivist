@@ -310,6 +310,11 @@ button:disabled:hover {
   justify-content: flex-end;
 }
 
+.fork-gesture-settings .settings-help-text {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .fork-gesture-settings select,
 .fork-playlist-controls select {
   background: var(--main-bg);
@@ -655,11 +660,49 @@ button:disabled:hover {
 }
 
 .vidstack-player {
+  --fork-video-brightness: 1;
   --media-brand: var(--accent-font-dark);
   --media-focus-ring: 0 0 0 2px var(--accent-font-dark);
   width: 100%;
   aspect-ratio: 16 / 9;
   background: #000;
+}
+
+.vidstack-player video {
+  filter: brightness(var(--fork-video-brightness));
+}
+
+.fork-hls-status {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+  margin: 0.5rem auto;
+  text-align: center;
+}
+
+.fork-hls-status p {
+  margin: 0;
+}
+
+.fork-hls-status button {
+  cursor: pointer;
+  padding: 0.3rem 0.6rem;
+}
+
+.fork-speed-section .vds-radio-group {
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fork-speed-section .vds-radio {
+  min-height: 2.5rem;
+}
+
+.vds-settings-menu-items > .vds-speed-menu {
+  display: none;
 }
 
 .player-fallback-notice,

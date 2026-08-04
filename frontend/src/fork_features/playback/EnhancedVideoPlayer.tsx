@@ -1,4 +1,10 @@
-import { MediaPlayer, MediaProvider, Track, type MediaPlayerInstance } from '@vidstack/react';
+import {
+  isHLSProvider,
+  MediaPlayer,
+  MediaProvider,
+  Track,
+  type MediaPlayerInstance,
+} from '@vidstack/react';
 import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default';
 import '@vidstack/react/player/styles/default/theme.css';
 import '@vidstack/react/player/styles/default/layouts/video.css';
@@ -12,6 +18,7 @@ import useSponsorBlock from './useSponsorBlock';
 import useChapterTrack from './useChapterTrack';
 import useMobileGestures from './useMobileGestures';
 import useHlsPreparation from './useHlsPreparation';
+import { MobilePipButton, SpeedMenuSection } from './PlaybackControls';
 import type { VideoPlayerProps } from '../../components/VideoPlayer';
 
 const SUBTITLE_STORAGE_KEY = 'playerSubtitleTrack';
@@ -203,11 +210,27 @@ const EnhancedVideoPlayer = ({
             isPreparing={playbackPreparation.isPreparing}
             error={playbackPreparation.error}
           />
-          <div className={playerClassName} style={{ filter: `brightness(${gestures.brightness})` }}>
+          {hlsPreparation.isPreparing && (
+            <p className="video-transcoding" role="status">
+              Preparing alternate audio tracks…
+            </p>
+          )}
+          {hlsPreparation.error && (
+            <div className="fork-hls-status" role="status">
+              <p className="settings-error">{hlsPreparation.error}</p>
+              {hlsPreparation.hasAlternateAudio && (
+                <button type="button" onClick={hlsPreparation.retry}>
+                  Retry alternate audio
+                </button>
+              )}
+            </div>
+          )}
+          <div className={playerClassName}>
             <MediaPlayer
               ref={playerRef}
               key={sourceKey}
               className="vidstack-player"
+              style={{ '--fork-video-brightness': gestures.brightness }}
               src={`${getApiUrl()}${sourceUrl}`}
               title={video.title}
               poster={`${getApiUrl()}${video.vid_thumb_url}`}
@@ -215,6 +238,14 @@ const EnhancedVideoPlayer = ({
               playsInline
               crossOrigin="use-credentials"
               storage={null}
+              onProviderChange={provider => {
+                if (isHLSProvider(provider)) {
+                  provider.library = () => import('hls.js');
+                }
+              }}
+              onHlsLibLoadError={() => {
+                hlsPreparation.fallback();
+              }}
               volume={volume}
               playbackRate={playbackRate}
               keyDisabled={false}
@@ -287,12 +318,22 @@ const EnhancedVideoPlayer = ({
                 icons={defaultLayoutIcons}
                 noAudioGain
                 noGestures
-                slots={{ googleCastButton: null }}
+                slots={{
+                  googleCastButton: null,
+                  settingsMenuItemsStart: <SpeedMenuSection />,
+                  smallLayout: {
+                    afterFullscreenButton: <MobilePipButton />,
+                  },
+                }}
               />
+              {gestures.gestureLayer}
             </MediaPlayer>
-            {gestures.gestureLayer}
           </div>
           <div className="fork-gesture-settings" aria-label="Mobile player settings">
+            <p className="settings-help-text">
+              Swipe controls adjust the player only; Android system volume and brightness are
+              unchanged.
+            </p>
             <label>
               Seek interval{' '}
               <select
@@ -312,7 +353,7 @@ const EnhancedVideoPlayer = ({
                 checked={gestures.doubleTapEnabled}
                 onChange={event => gestures.setDoubleTapEnabled(event.target.checked)}
               />{' '}
-              Double-tap seek
+              Double-tap seek (left/right)
             </label>
             <label>
               <input
@@ -320,7 +361,7 @@ const EnhancedVideoPlayer = ({
                 checked={gestures.swipeEnabled}
                 onChange={event => gestures.setSwipeEnabled(event.target.checked)}
               />{' '}
-              Swipe volume/brightness
+              Swipe player volume/brightness
             </label>
           </div>
         </div>

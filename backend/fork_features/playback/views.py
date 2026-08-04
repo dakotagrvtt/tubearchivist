@@ -237,7 +237,11 @@ class PlaybackViewHandler:
         """Return active HLS state or enqueue recoverable work."""
         redis = RedisArchivist()
         status = redis.get_message_dict(hls_status_key(video_id))
-        if status.get("status") == "failed":
+        query_params = getattr(request, "query_params", {})
+        retry_failed = (
+            request.method == "GET" and query_params.get("retry") == "1"
+        )
+        if status.get("status") == "failed" and not retry_failed:
             return Response(
                 {"error": status.get("error", "HLS preparation failed")},
                 status=500,
@@ -248,7 +252,7 @@ class PlaybackViewHandler:
         if (
             request.method == "HEAD"
             or status.get("status") == "queued"
-            or (status.get("status") == "preparing" and worker_active)
+            or worker_active
         ):
             return cls._hls_preparing_response()
 

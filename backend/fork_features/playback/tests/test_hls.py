@@ -23,6 +23,34 @@ def test_build_hls_command_maps_each_audio_stream():
     assert command[-1].endswith("audio1/index.m3u8")
 
 
+def test_master_playlist_makes_duplicate_audio_names_unique(tmp_path):
+    hls.write_master_playlist(
+        str(tmp_path),
+        [
+            {"language": "en", "title": "English"},
+            {"language": "en", "title": "English"},
+            {"language": "en", "title": "English 1"},
+            {"language": "en", "title": "English"},
+            {"language": "ja", "title": "Japanese"},
+        ],
+    )
+
+    playlist = (tmp_path / "master.m3u8").read_text()
+    names = [
+        line.split('NAME="', 1)[1].split('"', 1)[0]
+        for line in playlist.splitlines()
+        if line.startswith("#EXT-X-MEDIA:")
+    ]
+    assert names == [
+        "English",
+        "English 2",
+        "English 1",
+        "English 3",
+        "Japanese",
+    ]
+    assert len(names) == len(set(names))
+
+
 def test_hls_task_disabled_clears_status(monkeypatch):
     class Redis:
         def __init__(self):

@@ -67,6 +67,30 @@ def _name(stream: dict[str, Any], index: int) -> str:
     return value or f"Audio {index + 1}"
 
 
+def _unique_names(names: list[str]) -> list[str]:
+    """Keep original names while suffixing every later collision."""
+    reserved = set(names)
+    emitted: set[str] = set()
+    next_suffix: dict[str, int] = {}
+    unique_names = []
+
+    for name in names:
+        candidate = name
+        if candidate in emitted:
+            suffix = next_suffix.get(name, 1)
+            while True:
+                candidate = f"{name} {suffix}"
+                suffix += 1
+                if candidate not in reserved and candidate not in emitted:
+                    break
+            next_suffix[name] = suffix
+
+        emitted.add(candidate)
+        unique_names.append(candidate)
+
+    return unique_names
+
+
 def build_hls_command(
     source_path: str, output_dir: str, audio_streams: list[dict[str, Any]]
 ) -> list[str]:
@@ -129,10 +153,13 @@ def write_master_playlist(
 ) -> None:
     """Write one video rendition with alternate audio-only playlists."""
     lines = ["#EXTM3U", "#EXT-X-VERSION:3", "#EXT-X-INDEPENDENT-SEGMENTS"]
+    names = _unique_names(
+        [_name(stream, index) for index, stream in enumerate(audio_streams)]
+    )
     for index, stream in enumerate(audio_streams):
         default = "YES" if index == 0 else "NO"
         language = _language(stream, index)
-        name = _name(stream, index).replace('"', "'")
+        name = names[index].replace('"', "'")
         lines.append(
             '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",'
             f'LANGUAGE="{language}",NAME="{name}",'

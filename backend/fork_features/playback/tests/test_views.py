@@ -252,3 +252,81 @@ def test_hls_request_tracks_queue_and_worker_lifecycle(
         )
     else:
         assert redis.messages == []
+
+
+@pytest.mark.parametrize(
+    ("retry", "locked", "expected_status", "expected_calls"),
+    [
+        (False, False, 500, 0),
+        (True, False, 202, 1),
+        (True, True, 202, 0),
+    ],
+)
+def test_failed_hls_preparation_requires_explicit_unlocked_retry(
+    monkeypatch,
+    tmp_path,
+    retry,
+    locked,
+    expected_status,
+    expected_calls,
+):
+    class HlsView(_View):
+        response = {
+            "media_url": "channel/video.mkv",
+            "streams": [
+                {"type": "audio", "index": 1, "language": "en"},
+                {"type": "audio", "index": 2, "language": "es"},
+            ],
+        }
+
+    class FakeResponse(dict):
+        def __init__(self, data, status=200):
+            super().__init__()
+            self.data = data
+            self.status_code = status
+
+    class FakeTask:
+        calls = []
+
+        @classmethod
+        def delay(cls, *args):
+            cls.calls.append(args)
+
+    redis = _Redis(
+        {"status": "failed", "error": "HLS preparation failed"},
+        locked=locked,
+    )
+    media_path = tmp_path / "video.mkv"
+    media_path.write_bytes(b"video")
+    monkeypatch.setattr(
+        views,
+        "resolve_archived_media_path",
+        lambda *_args: ("channel/video.mkv", str(media_path)),
+    )
+    monkeypatch.setattr(
+        views, "hls_asset_path", lambda *_args: str(tmp_path / "missing")
+    )
+    monkeypatch.setattr(views, "RedisArchivist", lambda: redis)
+    monkeypatch.setattr(views, "prepare_hls_playback", FakeTask)
+    monkeypatch.setattr(views, "Response", FakeResponse)
+    request = type(
+        "Request",
+        (),
+        {
+            "method": "GET",
+            "query_params": {"retry": "1"} if retry else {},
+        },
+    )()
+
+    response = views.PlaybackViewHandler(HlsView()).hls(request, "video")
+
+    assert response.status_code == expected_status
+    assert len(FakeTask.calls) == expected_calls
+    if expected_calls:
+        assert redis.messages[-1] == (
+            "hls:video",
+            {"status": "queued"},
+            300,
+        )
+    else:
+        assert redis.messages == []

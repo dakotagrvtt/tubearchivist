@@ -133,16 +133,22 @@ Chapter labels are indexed from yt-dlp metadata and supplied to Vidstack as an
 in-memory WebVTT track. No chapter thumbnails, image sprites, transcript panel,
 or quality selector is generated. Playlist previous/next, autoplay, repeat, and
 shuffle state is kept in the browser and remains unavailable when the Enhanced
-Player switch is disabled. Mobile double-tap seek and vertical volume or player
-brightness gestures can be configured below the player.
+Player switch is disabled. Mobile double-tap seek and vertical player-volume or
+video-brightness gestures can be configured below the player. These gestures
+change the media element and video presentation only; browser pages cannot
+change Android's system volume or screen brightness.
 
 When Multi-Audio Playback is enabled and a video has multiple archived audio
 streams, the backend creates one cached HLS video presentation with alternate
 audio renditions. The cache contains one video playlist plus derived audio
 playlists; it does not download another source video or quality. The cache is
 removed when the source archive is replaced and is served only through protected
-Nginx locations. If preparation or browser HLS playback fails, Vidstack retries
-the existing direct media source without disabling the player for the session.
+Nginx locations. The enhanced player bundles the HLS.js runtime locally, so
+playback does not depend on a third-party CDN. If preparation or browser HLS
+playback fails, the player shows a retryable status and falls back to the
+existing direct media source without disabling the player for the session. A
+manual retry resets one failed HLS job before returning to normal polling; it
+does not create an automatic retry loop.
 Completed HLS jobs enforce the cache age and size limits so a running service
 does not depend on a restart to reclaim old presentations.
 
