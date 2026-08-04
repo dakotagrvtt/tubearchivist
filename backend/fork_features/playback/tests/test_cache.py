@@ -30,4 +30,4 @@ def test_invalidate_removes_complete_and_partial_cache(monkeypatch, tmp_path):
     cache.invalidate_playback_cache("video")
 
     assert not any(path.exists() for path in paths)
-    assert redis.deleted == ["playback:video"]
+    assert redis.deleted == ["playback:video", "hls:video"]

@@ -46,6 +46,7 @@ import { ApiResponseType } from '../functions/APIClient';
 import VideoThumbnail from '../components/VideoThumbail';
 import { ViewStylesEnum, ViewStylesType } from '../configuration/constants/ViewStyle';
 import { formatVideoStreamLabel } from '../fork_features/registry';
+import type { PlaybackPlaylistContext } from '../fork_features/playback/types';
 
 const isInPlaylist = (videoId: string, playlist: PlaylistType) => {
   return playlist.playlist_entries.some(entry => {
@@ -57,32 +58,7 @@ type VideoParams = {
   videoId: string;
 };
 
-type PlaylistNavPreviousItemType = {
-  youtube_id: string;
-  vid_thumb: string;
-  idx: number;
-  title: string;
-};
-
-type PlaylistNavNextItemType = {
-  youtube_id: string;
-  vid_thumb: string;
-  idx: number;
-  title: string;
-};
-
-type PlaylistNavItemType = {
-  playlist_meta: {
-    current_idx: string;
-    playlist_id: string;
-    playlist_name: string;
-    playlist_channel: string;
-  };
-  playlist_previous: PlaylistNavPreviousItemType;
-  playlist_next: PlaylistNavNextItemType;
-};
-
-export type PlaylistNavType = PlaylistNavItemType[];
+export type PlaylistNavType = VideoNavResponseType[];
 
 export type SponsorBlockSegmentType = {
   category: string;
@@ -226,6 +202,27 @@ const Video = () => {
       }
     : undefined;
 
+  const activePlaylist =
+    playlistNav?.find(playlist => playlist.playlist_meta.playlist_id === playlistIdForAutoplay) ??
+    playlistNav?.[0];
+  const playlistContext: PlaybackPlaylistContext | undefined = activePlaylist
+    ? {
+        playlistId: activePlaylist.playlist_meta.playlist_id,
+        playlistName: activePlaylist.playlist_meta.playlist_name,
+        currentVideoId: video.youtube_id,
+        entries: activePlaylist.playlist_entries,
+        previous: activePlaylist.playlist_previous,
+        next: activePlaylist.playlist_next,
+        autoplay:
+          playlistAutoplay && playlistIdForAutoplay === activePlaylist.playlist_meta.playlist_id,
+        onAutoplayChange: enabled => {
+          setPlaylistAutoplay(enabled);
+          setPlaylistIDForAutoplay(enabled ? activePlaylist.playlist_meta.playlist_id : '');
+        },
+        onNavigate: targetVideoId => navigate(Routes.Video(targetVideoId)),
+      }
+    : undefined;
+
   console.log('playlistNav', playlistNav);
 
   const cast = appSettingsConfig.application.enable_cast;
@@ -240,6 +237,7 @@ const Video = () => {
         sponsorBlock={sponsorBlock}
         autoplay={playlistAutoplay}
         nextVideo={nextVideo}
+        playlistContext={playlistContext}
         seekToTimestamp={seekToTimestamp}
         setSeekToTimestamp={setSeekToTimestamp}
         onWatchStateChanged={() => {

@@ -17,6 +17,7 @@ def test_fork_feature_flags_are_default_on():
 
     assert defaults == {
         "enable_fork_audio_tracks": True,
+        "enable_fork_multi_audio_playback": True,
         "enable_fork_player": True,
         "enable_fork_playback": True,
     }
@@ -29,6 +30,7 @@ def test_fork_feature_flags_are_default_on():
     assert effective["application"]["enable_fork_audio_tracks"] is True
     assert effective["application"]["enable_fork_player"] is True
     assert effective["application"]["enable_fork_playback"] is True
+    assert effective["application"]["enable_fork_multi_audio_playback"] is True
 
 
 def test_disabled_audio_feature_blocks_download_hook():

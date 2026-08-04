@@ -11,6 +11,7 @@ import usePlaybackPreparation from '../fork_features/playback/usePlaybackPrepara
 import PlaybackPlayer from '../fork_features/playback/PlaybackPlayer';
 import usePlayerProgress from '../fork_features/playback/usePlayerProgress';
 import useSponsorBlock from '../fork_features/playback/useSponsorBlock';
+import type { PlaybackPlaylistContext } from '../fork_features/playback/types';
 
 const VIDEO_PLAYBACK_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3];
 
@@ -56,7 +57,7 @@ const Subtitles = ({ subtitles }: SubtitlesProp) => {
 
 export type NextVideoType = {
   title: string;
-  thumbnail: string;
+  thumbnail?: string;
 };
 
 export type VideoPlayerProps = {
@@ -69,6 +70,8 @@ export type VideoPlayerProps = {
   seekToTimestamp?: number;
   setSeekToTimestamp?: (timestamp: number | undefined) => void;
   nextVideo?: NextVideoType;
+  /** Narrow hook for fork-owned playlist controls and navigation. */
+  playlistContext?: PlaybackPlaylistContext;
 };
 
 export const NativeVideoPlayer = ({

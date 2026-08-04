@@ -94,11 +94,20 @@ class SubtitleItemSerializer(serializers.Serializer):
     url = serializers.URLField(allow_null=True)
 
 
+class ChapterSerializer(serializers.Serializer):
+    """serialize a chapter label and its playback interval"""
+
+    start = serializers.FloatField()
+    end = serializers.FloatField()
+    title = serializers.CharField()
+
+
 class VideoSerializer(serializers.Serializer):
     """serialize video item"""
 
     active = serializers.BooleanField()
     category = serializers.ListField(child=serializers.CharField())
+    chapters = ChapterSerializer(many=True, required=False)
     channel = ChannelSerializer(required=False)
     comment_count = serializers.IntegerField(allow_null=True, required=False)
     date_downloaded = serializers.IntegerField()
@@ -202,12 +211,23 @@ class PlaylistNavVideoSerializer(serializers.Serializer):
     vid_thumb = serializers.CharField()
 
 
+class PlaylistNavEntrySerializer(serializers.Serializer):
+    """serialize one downloaded entry for fork playlist controls"""
+
+    youtube_id = serializers.CharField()
+    title = serializers.CharField()
+    uploader = serializers.CharField(allow_null=True)
+    idx = serializers.IntegerField()
+    downloaded = serializers.BooleanField()
+
+
 class PlaylistNavItemSerializer(serializers.Serializer):
     """serialize nav on playlist"""
 
     playlist_meta = PlaylistNavMetaSerializer()
     playlist_previous = PlaylistNavVideoSerializer(allow_null=True)
     playlist_next = PlaylistNavVideoSerializer(allow_null=True)
+    playlist_entries = PlaylistNavEntrySerializer(many=True)
 
 
 class VideoProgressUpdateSerializer(serializers.Serializer):

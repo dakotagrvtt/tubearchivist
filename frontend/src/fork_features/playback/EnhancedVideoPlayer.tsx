@@ -2,19 +2,23 @@ import { MediaPlayer, MediaProvider, Track, type MediaPlayerInstance } from '@vi
 import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default';
 import '@vidstack/react/player/styles/default/theme.css';
 import '@vidstack/react/player/styles/default/layouts/video.css';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import getApiUrl from '../../configuration/getApiUrl';
 import PlaybackPreparationStatus from './PlaybackPreparationStatus';
 import usePlaybackPreparation from './usePlaybackPreparation';
 import usePlayerProgress from './usePlayerProgress';
 import useSponsorBlock from './useSponsorBlock';
+import useChapterTrack from './useChapterTrack';
+import useMobileGestures from './useMobileGestures';
+import useHlsPreparation from './useHlsPreparation';
 import type { VideoPlayerProps } from '../../components/VideoPlayer';
 
 const SUBTITLE_STORAGE_KEY = 'playerSubtitleTrack';
 
 type EnhancedVideoPlayerProps = VideoPlayerProps & {
   onFatalError?: () => void;
+  repeatCurrent?: boolean;
 };
 
 const subtitleLabel = (subtitle: { name: string; source: string }) => {
@@ -31,6 +35,7 @@ const EnhancedVideoPlayer = ({
   seekToTimestamp,
   setSeekToTimestamp,
   onFatalError,
+  repeatCurrent = false,
 }: EnhancedVideoPlayerProps) => {
   const playerRef = useRef<MediaPlayerInstance>(null);
   const initialSeekDone = useRef(false);
@@ -40,13 +45,17 @@ const EnhancedVideoPlayer = ({
   const searchParamVideoProgress = searchParams.get('t');
   const videoId = video.youtube_id;
   const playbackPreparation = usePlaybackPreparation(videoId, video.media_url);
+  const hlsPreparation = useHlsPreparation(videoId, video.streams);
   const videoUrl = playbackPreparation.videoUrl;
+  const sourceUrl = hlsPreparation.url ?? videoUrl;
   const playbackProgress = usePlayerProgress({
     videoId,
     watched: video.player.watched,
     onWatchStateChanged,
   });
   const sponsor = useSponsorBlock(sponsorBlock);
+  const chapterTrack = useChapterTrack(video.chapters);
+  const gestures = useMobileGestures(playerRef);
   const requestedProgress =
     searchParamVideoProgress !== null
       ? Number(searchParamVideoProgress)
@@ -58,6 +67,26 @@ const EnhancedVideoPlayer = ({
   const storedSpeed = Number(localStorage.getItem('playerSpeed') ?? 1);
   const volume = Number.isFinite(storedVolume) ? Math.min(Math.max(storedVolume, 0), 1) : 1;
   const playbackRate = Number.isFinite(storedSpeed) ? storedSpeed : 1;
+  const sourceKey = `${sourceUrl}-${playbackPreparation.retryKey}-${hlsPreparation.retryKey}`;
+  const previousSourceKey = useRef(sourceKey);
+  const lastPlaybackTime = useRef(initialProgress);
+  const playbackIntent = useRef(autoplay);
+  const pendingSourceRestore = useRef<{
+    currentTime: number;
+    shouldPlay: boolean;
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    if (previousSourceKey.current === sourceKey) {
+      return;
+    }
+
+    pendingSourceRestore.current = {
+      currentTime: lastPlaybackTime.current,
+      shouldPlay: playbackIntent.current,
+    };
+    previousSourceKey.current = sourceKey;
+  }, [sourceKey]);
 
   useEffect(() => {
     if (embed) {
@@ -96,6 +125,8 @@ const EnhancedVideoPlayer = ({
     }
 
     playerRef.current.currentTime = seekToTimestamp;
+    lastPlaybackTime.current = seekToTimestamp;
+    playbackIntent.current = true;
     void playerRef.current.play().catch(() => undefined);
     setSeekToTimestamp?.(undefined);
     window.scroll(0, 0);
@@ -103,6 +134,7 @@ const EnhancedVideoPlayer = ({
 
   const handleTimeUpdate = (detail: { currentTime: number }) => {
     const currentTime = Number(detail.currentTime);
+    lastPlaybackTime.current = currentTime;
     const duration = playerRef.current?.duration ?? video.player.duration;
     sponsor.onTimeUpdate(currentTime, time => {
       if (playerRef.current) {
@@ -115,15 +147,46 @@ const EnhancedVideoPlayer = ({
   const handleEnded = () => {
     playbackProgress.onEnded();
     sponsor.reset();
+    if (repeatCurrent && playerRef.current) {
+      lastPlaybackTime.current = 0;
+      playbackIntent.current = true;
+      playerRef.current.currentTime = 0;
+      void playerRef.current.play().catch(() => undefined);
+      return;
+    }
     onVideoEnd?.();
   };
 
   const handleCanPlay = () => {
-    if (initialSeekDone.current || !playerRef.current || initialProgress <= 0) {
+    if (!playerRef.current) {
       return;
     }
 
-    playerRef.current.currentTime = initialProgress;
+    const restore = pendingSourceRestore.current;
+    if (restore) {
+      pendingSourceRestore.current = null;
+      const duration = playerRef.current.duration;
+      const currentTime = Number.isFinite(duration)
+        ? Math.min(restore.currentTime, duration)
+        : restore.currentTime;
+      playerRef.current.currentTime = Math.max(currentTime, 0);
+      lastPlaybackTime.current = Math.max(currentTime, 0);
+      initialSeekDone.current = true;
+      if (restore.shouldPlay) {
+        playbackIntent.current = true;
+        void playerRef.current.play().catch(() => undefined);
+      }
+      return;
+    }
+
+    if (initialSeekDone.current) {
+      return;
+    }
+
+    if (initialProgress > 0) {
+      playerRef.current.currentTime = initialProgress;
+      lastPlaybackTime.current = initialProgress;
+    }
     initialSeekDone.current = true;
   };
 
@@ -140,12 +203,12 @@ const EnhancedVideoPlayer = ({
             isPreparing={playbackPreparation.isPreparing}
             error={playbackPreparation.error}
           />
-          <div className={playerClassName}>
+          <div className={playerClassName} style={{ filter: `brightness(${gestures.brightness})` }}>
             <MediaPlayer
               ref={playerRef}
-              key={`${videoUrl}-${playbackPreparation.retryKey}`}
+              key={sourceKey}
               className="vidstack-player"
-              src={`${getApiUrl()}${videoUrl}`}
+              src={`${getApiUrl()}${sourceUrl}`}
               title={video.title}
               poster={`${getApiUrl()}${video.vid_thumb_url}`}
               autoPlay={autoplay}
@@ -167,7 +230,13 @@ const EnhancedVideoPlayer = ({
               }}
               onCanPlay={handleCanPlay}
               onTimeUpdate={handleTimeUpdate}
-              onPause={playbackProgress.onPause}
+              onPlay={() => {
+                playbackIntent.current = true;
+              }}
+              onPause={() => {
+                playbackIntent.current = false;
+                playbackProgress.onPause();
+              }}
               onEnded={handleEnded}
               onVolumeChange={detail => {
                 localStorage.setItem('playerVolume', detail.volume.toString());
@@ -179,6 +248,10 @@ const EnhancedVideoPlayer = ({
                 localStorage.setItem(SUBTITLE_STORAGE_KEY, track?.id ?? 'off');
               }}
               onError={() => {
+                if (hlsPreparation.url) {
+                  hlsPreparation.fallback();
+                  return;
+                }
                 void playbackPreparation.handleError().then(result => {
                   if (result === 'error') {
                     onFatalError?.();
@@ -187,6 +260,15 @@ const EnhancedVideoPlayer = ({
               }}
             >
               <MediaProvider>
+                {chapterTrack && (
+                  <Track
+                    id="chapters"
+                    kind="chapters"
+                    label="Chapters"
+                    src={chapterTrack}
+                    default
+                  />
+                )}
                 {video.subtitles?.map(subtitle => (
                   <Track
                     key={`${subtitle.lang}-${subtitle.source}-${subtitle.name}`}
@@ -204,9 +286,42 @@ const EnhancedVideoPlayer = ({
               <DefaultVideoLayout
                 icons={defaultLayoutIcons}
                 noAudioGain
+                noGestures
                 slots={{ googleCastButton: null }}
               />
             </MediaPlayer>
+            {gestures.gestureLayer}
+          </div>
+          <div className="fork-gesture-settings" aria-label="Mobile player settings">
+            <label>
+              Seek interval{' '}
+              <select
+                value={gestures.seekInterval}
+                onChange={event => gestures.setSeekInterval(Number(event.target.value))}
+              >
+                {gestures.seekIntervals.map(interval => (
+                  <option key={interval} value={interval}>
+                    {interval}s
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={gestures.doubleTapEnabled}
+                onChange={event => gestures.setDoubleTapEnabled(event.target.checked)}
+              />{' '}
+              Double-tap seek
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={gestures.swipeEnabled}
+                onChange={event => gestures.setSwipeEnabled(event.target.checked)}
+              />{' '}
+              Swipe volume/brightness
+            </label>
           </div>
         </div>
       </div>

@@ -247,6 +247,88 @@ button:disabled:hover {
   text-align: center;
 }
 
+.fork-playlist-controls,
+.fork-gesture-settings {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0.5rem 0;
+}
+
+.fork-playlist-controls label,
+.fork-gesture-settings label {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.fork-playlist-name {
+  color: var(--accent-font-light);
+  font-size: 0.9rem;
+  margin-left: auto;
+}
+
+.fork-mobile-gestures {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 3;
+}
+
+.fork-mobile-gesture-zone {
+  bottom: 18%;
+  pointer-events: auto;
+  position: absolute;
+  top: 0;
+  touch-action: none;
+  width: 35%;
+}
+
+.fork-mobile-gesture-left {
+  left: 0;
+}
+
+.fork-mobile-gesture-right {
+  right: 0;
+}
+
+.fork-gesture-feedback {
+  background: rgb(0 0 0 / 70%);
+  border-radius: 999px;
+  color: #fff;
+  left: 50%;
+  padding: 0.6rem 1rem;
+  pointer-events: none;
+  position: absolute;
+  top: 45%;
+  transform: translate(-50%, -50%);
+}
+
+.fork-gesture-settings {
+  font-size: 0.85rem;
+  justify-content: flex-end;
+}
+
+.fork-gesture-settings select,
+.fork-playlist-controls select {
+  background: var(--main-bg);
+  border: 1px solid var(--accent-font-dark);
+  color: var(--main-font);
+  padding: 0.2rem;
+}
+
+@media (max-width: 600px) {
+  .fork-playlist-name {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+
+  .fork-gesture-settings {
+    justify-content: flex-start;
+  }
+}
+
 .settings-help-text {
   color: var(--accent-font-light);
   font-size: 0.85em;
@@ -565,6 +647,7 @@ button:disabled:hover {
   width: 90%;
   max-width: 1500px;
   margin: 0 auto;
+  position: relative;
 }
 
 .enhanced-video-player.embedded {

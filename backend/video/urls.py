@@ -36,6 +36,11 @@ urlpatterns = [
         name="api-video-stream-status",
     ),
     path(
+        "<slug:video_id>/hls/<path:asset>",
+        views.VideoHlsView.as_view(),
+        name="api-video-hls",
+    ),
+    path(
         "<slug:video_id>/similar/",
         views.VideoSimilarView.as_view(),
         name="api-video-similar",

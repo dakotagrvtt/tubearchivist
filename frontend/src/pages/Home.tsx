@@ -62,9 +62,16 @@ export type Subtitles = {
   media_url: string;
 };
 
+export type ChapterType = {
+  start: number;
+  end: number;
+  title: string;
+};
+
 export type VideoType = {
   active: boolean;
   category: string[];
+  chapters?: ChapterType[];
   channel: ChannelType;
   date_downloaded: number;
   description: string;

@@ -49,6 +49,22 @@ class MediaStreamEnricher(Protocol):
     ) -> dict[str, Any]: ...
 
 
+class VideoMetadataEnricher(Protocol):
+    """Add feature-owned fields while a video index document is built."""
+
+    def enrich_metadata(
+        self, metadata: dict[str, Any], video: dict[str, Any]
+    ) -> dict[str, Any]: ...
+
+
+class PlaylistNavEnricher(Protocol):
+    """Add fork-owned data to one playlist navigation response."""
+
+    def enrich_nav(
+        self, nav: dict[str, Any], playlist: dict[str, Any]
+    ) -> dict[str, Any]: ...
+
+
 @dataclass
 class _FeatureEntry:
     feature_id: str
@@ -61,6 +77,8 @@ class _FeatureEntry:
     enabled_config_key: str | None = None
     download_hook: DownloadHook | None = None
     media_stream_enricher: MediaStreamEnricher | None = None
+    video_metadata_enricher: VideoMetadataEnricher | None = None
+    playlist_nav_enricher: PlaylistNavEnricher | None = None
 
 
 _registry: list[_FeatureEntry] = []
@@ -126,6 +144,8 @@ def register(
     enabled_config_key: str | None = None,
     download_hook: DownloadHook | None = None,
     media_stream_enricher: MediaStreamEnricher | None = None,
+    video_metadata_enricher: VideoMetadataEnricher | None = None,
+    playlist_nav_enricher: PlaylistNavEnricher | None = None,
 ) -> None:
     """Register one feature and fail early on contribution collisions."""
     if any(entry.feature_id == feature_id for entry in _registry):
@@ -166,6 +186,8 @@ def register(
             enabled_config_key=enabled_config_key,
             download_hook=download_hook,
             media_stream_enricher=media_stream_enricher,
+            video_metadata_enricher=video_metadata_enricher,
+            playlist_nav_enricher=playlist_nav_enricher,
         )
     )
     print(f"[fork_features] registered feature: {feature_id}")
@@ -262,4 +284,22 @@ def get_media_stream_enrichers() -> list[MediaStreamEnricher]:
         entry.media_stream_enricher
         for entry in _registry
         if entry.media_stream_enricher is not None
+    ]
+
+
+def get_video_metadata_enrichers() -> list[VideoMetadataEnricher]:
+    """Return feature-owned video metadata enrichers in registration order."""
+    return [
+        entry.video_metadata_enricher
+        for entry in _registry
+        if entry.video_metadata_enricher is not None
+    ]
+
+
+def get_playlist_nav_enrichers() -> list[PlaylistNavEnricher]:
+    """Return feature-owned playlist navigation enrichers."""
+    return [
+        entry.playlist_nav_enricher
+        for entry in _registry
+        if entry.playlist_nav_enricher is not None
     ]

@@ -216,6 +216,15 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         if description := self.youtube_meta.get("description"):
             self.json_data["description"] = description
 
+        # Fork features contribute indexed metadata through a narrow registry
+        # hook so upstream video indexing remains feature-agnostic.
+        from fork_features.registry import get_video_metadata_enrichers
+
+        for enricher in get_video_metadata_enrichers():
+            self.json_data = enricher.enrich_metadata(
+                self.youtube_meta, self.json_data
+            )
+
     def _build_published(self) -> int | str:
         """build published date or timestamp"""
         timestamp = self.youtube_meta.get("timestamp")
@@ -484,9 +493,7 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
 
         if self.config["downloads"].get("add_metadata"):
             if not self.json_data.get("media_url", "").endswith(".mp4"):
-                print(
-                    f"{self.youtube_id}: skip embed, metadata is mp4-only"
-                )
+                print(f"{self.youtube_id}: skip embed, metadata is mp4-only")
                 return
             try:
                 self._embed_text_data()
