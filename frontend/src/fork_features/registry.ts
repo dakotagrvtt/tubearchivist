@@ -66,6 +66,7 @@ import AudioTracksAppSection from './audioTracks/ApplicationSettingsSection';
 import AudioTracksFeatureToggle from './audioTracks/ApplicationFeatureToggle';
 import AudioTracksChannelSection from './audioTracks/ChannelSettingsSection';
 import PlaybackFeatureToggle from './playback/ApplicationFeatureToggle';
+import PlayerFeatureToggle from './playback/PlayerFeatureToggle';
 import { formatAudioTrackStreamLabel } from './audioTracks/streamLabels';
 
 /**
@@ -82,6 +83,7 @@ export const APP_SETTINGS_SECTIONS: ComponentType<AppSettingsSectionProps>[] = [
 export const APPLICATION_SETTINGS_SECTIONS: ComponentType<AppSettingsSectionProps>[] = [
   AudioTracksFeatureToggle,
   PlaybackFeatureToggle,
+  PlayerFeatureToggle,
 ];
 
 /**
