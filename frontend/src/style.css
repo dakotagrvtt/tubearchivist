@@ -701,7 +701,7 @@ button:disabled:hover {
   min-height: 2.5rem;
 }
 
-.vds-settings-menu-items > .vds-speed-menu {
+.vds-speed-menu {
   display: none;
 }
 
