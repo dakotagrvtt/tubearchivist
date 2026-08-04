@@ -4,6 +4,8 @@ import { useAppSettingsStore } from '../../stores/AppSettingsStore';
 
 const PLAYBACK_DISABLED_ERROR = 'enhanced playback is disabled';
 
+export type PlaybackErrorResult = 'preparing' | 'ready' | 'disabled' | 'error';
+
 type PlaybackPreparationState = {
   videoUrl: string;
   isPreparing: boolean;
@@ -53,10 +55,10 @@ const usePlaybackPreparation = (videoId: string, mediaUrl: string) => {
     return () => window.clearTimeout(timer);
   }, [current.isPreparing, videoUrl]);
 
-  const handleError = useCallback(async () => {
+  const handleError = useCallback(async (): Promise<PlaybackErrorResult> => {
     if (!playbackEnabled) {
       setState({ ...current, error: 'Video could not be loaded.' });
-      return;
+      return 'error';
     }
 
     try {
@@ -69,25 +71,35 @@ const usePlaybackPreparation = (videoId: string, mediaUrl: string) => {
           isPreparing: true,
           error: null,
         });
-        return;
+        return 'preparing';
       }
       if (response.ok) {
-        setState({ ...current, error: null });
-        return;
+        setState(previous => {
+          const matching = previous.videoUrl === videoUrl ? previous : initialState(videoUrl);
+          return {
+            ...matching,
+            isPreparing: false,
+            error: null,
+            retryKey: matching.retryKey + 1,
+          };
+        });
+        return 'ready';
       }
 
       const statusResponse = await fetch(`${getApiUrl()}${videoUrl}status/`);
       const payload = await statusResponse.json().catch(() => undefined);
       if (payload?.error === PLAYBACK_DISABLED_ERROR) {
         disablePlaybackForSession();
-        return;
+        return 'disabled';
       }
       setState({
         ...current,
         error: payload?.error || 'Video could not be loaded.',
       });
+      return 'error';
     } catch {
       setState({ ...current, error: 'Unable to load this video.' });
+      return 'error';
     }
   }, [current, playbackEnabled, videoUrl]);
 

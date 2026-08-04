@@ -196,7 +196,6 @@ const GoogleCast = ({ video, setRefresh, onWatchStateChanged }: GoogleCastProps)
   }, [video?.media_url, video?.subtitles, video?.title, video?.vid_thumb_url]);
 
   useEffect(() => {
-    // @ts-expect-error __onGCastApiAvailable is the google cast window hook ( source: https://developers.google.com/cast/docs/web_sender/integrate )
     window['__onGCastApiAvailable'] = function (isAvailable: boolean) {
       if (isAvailable) {
         setup();

@@ -6,8 +6,8 @@ This fork contains two kinds of additions:
   fork registries. Audio-track archiving is currently the only optional
   extension.
 - **Fork infrastructure** replaces or augments an upstream workflow. Enhanced
-  playback is registered as a default-on feature and can be disabled from
-  Application Settings when direct upstream media playback is preferred.
+  playback and the Vidstack player are registered as default-on features and
+  can be disabled independently from Application Settings.
 
 Generic URL downloads, the Python range streamer, and the global asyncio patch
 are intentionally removed.
@@ -40,7 +40,7 @@ frontend/src/fork_features/
   registry.ts             feature-owned UI and stream-label slots
   types.ts                feature-owned application settings types
   audioTracks/            audio settings UI and labels
-  playback/               playback preparation hook and status UI
+  playback/               playback preparation, Vidstack surface, hooks, and status UI
 ```
 
 `ForkFeaturesConfig.ready()` imports optional extensions whose package-level
@@ -54,12 +54,13 @@ default so older configurations remain enabled during startup synchronization.
 ## Feature switches
 
 Users can manage fork features from **Settings → Application → Fork Features**.
-Both switches are enabled by default.
+All switches are enabled by default.
 
 | Setting | When enabled | When disabled |
 | --- | --- | --- |
 | Audio Tracks | Allows the Download Format and per-channel multistream settings to archive additional audio languages. | Stops additional-track downloads and hides their configuration controls. Existing multistream settings and archived tracks are preserved. |
 | Enhanced Playback | Serves MP4 files with range support and prepares non-MP4 files for browser playback. | Uses the original media URL directly and starts no new preparation tasks. Browser-incompatible containers such as MKV may not play. |
+| Enhanced Player | Uses the fork's Vidstack controls, subtitles, Picture-in-Picture, progress hooks, and playlist next-up prompt. | Uses the native browser player while retaining Enhanced Playback media preparation. |
 
 Changes apply to new requests and jobs immediately. A player open in another
 browser session falls back to the direct media URL when the server reports that
@@ -68,8 +69,8 @@ finish. Disabling a switch never deletes archived media, metadata, saved
 settings, or completed playback caches.
 
 The stored configuration keys are
-`application.enable_fork_audio_tracks` and
-`application.enable_fork_playback`. The Audio Tracks master switch takes
+`application.enable_fork_audio_tracks`, `application.enable_fork_playback`, and
+`application.enable_fork_player`. The Audio Tracks master switch takes
 precedence over global and per-channel `audio_multistreams` values.
 
 ## Core integration boundaries
@@ -84,7 +85,7 @@ precedence over global and per-channel `audio_multistreams` values.
 | Playback API | Route endpoints and delegate the view | `playback/views.py` |
 | Celery discovery | Re-export `prepare_playback` | `playback/tasks.py` |
 | Archive replacement | Call cache invalidation | `playback/cache.py` |
-| Browser playback | Call the preparation hook and render status | `frontend/src/fork_features/playback/` |
+| Browser playback | Expose the native player through one render hook | Player orchestration, preparation, controls, and lifecycle hooks under `frontend/src/fork_features/playback/` |
 | Range serving | Provide internal Nginx locations | protected media/transcode locations |
 
 ## Audio-track behavior

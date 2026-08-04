@@ -1,21 +1,16 @@
-import updateVideoProgressById from '../api/actions/updateVideoProgressById';
-import { SponsorBlockSegmentType, SponsorBlockType } from '../pages/Video';
-import {
-  Dispatch,
-  Fragment,
-  SetStateAction,
-  SyntheticEvent,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import type { SponsorBlockType } from '../pages/Video';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import type { SyntheticEvent } from 'react';
 import formatTime from '../functions/formatTime';
 import { useSearchParams } from 'react-router-dom';
 import getApiUrl from '../configuration/getApiUrl';
 import { useKeyPress } from '../functions/useKeypressHook';
-import { VideoResponseType } from '../api/loader/loadVideoById';
+import type { VideoResponseType } from '../api/loader/loadVideoById';
 import PlaybackPreparationStatus from '../fork_features/playback/PlaybackPreparationStatus';
 import usePlaybackPreparation from '../fork_features/playback/usePlaybackPreparation';
+import PlaybackPlayer from '../fork_features/playback/PlaybackPlayer';
+import usePlayerProgress from '../fork_features/playback/usePlayerProgress';
+import useSponsorBlock from '../fork_features/playback/useSponsorBlock';
 
 const VIDEO_PLAYBACK_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3];
 
@@ -59,56 +54,12 @@ const Subtitles = ({ subtitles }: SubtitlesProp) => {
   });
 };
 
-const handleTimeUpdate =
-  (
-    youtubeId: string,
-    watched: boolean,
-    sponsorBlock?: SponsorBlockType,
-    setSponsorSegmentSkipped?: Dispatch<SetStateAction<SponsorSegmentsSkippedType>>,
-    onWatchStateChanged?: (status: boolean) => void,
-  ) =>
-  async (videoTag: VideoTag) => {
-    const currentTime = Number(videoTag.currentTarget.currentTime);
+export type NextVideoType = {
+  title: string;
+  thumbnail: string;
+};
 
-    if (sponsorBlock && sponsorBlock.segments) {
-      sponsorBlock.segments.forEach((segment: SponsorBlockSegmentType) => {
-        const actionType = segment.actionType;
-        const doSkip = actionType == 'skip';
-        const [from, to] = segment.segment;
-
-        if (doSkip && currentTime >= from && currentTime <= from + 0.3) {
-          videoTag.currentTarget.currentTime = to;
-
-          setSponsorSegmentSkipped?.((segments: SponsorSegmentsSkippedType) => {
-            return { ...segments, [segment.UUID]: { from, to } };
-          });
-        }
-
-        if (currentTime > to + 10) {
-          setSponsorSegmentSkipped?.((segments: SponsorSegmentsSkippedType) => {
-            return { ...segments, [segment.UUID]: { from: 0, to: 0 } };
-          });
-        }
-      });
-    }
-
-    if (currentTime < 10 && currentTime === Number(videoTag.currentTarget.duration)) return;
-    if (Number((currentTime % 10).toFixed(1)) <= 0.2) {
-      // Check progress every 10 seconds or else progress is checked a few times a second
-      const videoProgressResponse = await updateVideoProgressById({
-        youtubeId,
-        currentProgress: currentTime,
-      });
-
-      const { data: videoProgressResponseData } = videoProgressResponse ?? {};
-
-      if (videoProgressResponseData?.watched && watched !== videoProgressResponseData.watched) {
-        onWatchStateChanged?.(true);
-      }
-    }
-  };
-
-type VideoPlayerProps = {
+export type VideoPlayerProps = {
   video: VideoResponseType;
   sponsorBlock?: SponsorBlockType;
   embed?: boolean;
@@ -117,9 +68,10 @@ type VideoPlayerProps = {
   onVideoEnd?: () => void;
   seekToTimestamp?: number;
   setSeekToTimestamp?: (timestamp: number | undefined) => void;
+  nextVideo?: NextVideoType;
 };
 
-const VideoPlayer = ({
+export const NativeVideoPlayer = ({
   video,
   sponsorBlock,
   embed,
@@ -161,7 +113,6 @@ const VideoPlayer = ({
       ? VIDEO_PLAYBACK_SPEEDS.indexOf(playBackSpeedFromStorage)
       : 3;
 
-  const [skippedSegments, setSkippedSegments] = useState<SponsorSegmentsSkippedType>({});
   const [isMuted, setIsMuted] = useState(false);
   const [playbackSpeedIndex, setPlaybackSpeedIndex] = useState(playBackSpeedIndex);
   const [lastSubtitleTack, setLastSubtitleTack] = useState(0);
@@ -189,8 +140,14 @@ const VideoPlayer = ({
   const videoUrl = playbackPreparation.videoUrl;
   const videoThumbUrl = video.vid_thumb_url;
   const watched = video.player.watched;
-  const duration = video.player.duration;
   const videoSubtitles = video.subtitles;
+  const playbackProgress = usePlayerProgress({
+    videoId,
+    watched,
+    onWatchStateChanged,
+  });
+  const sponsor = useSponsorBlock(sponsorBlock);
+  const skippedSegments = sponsor.skippedSegments;
 
   let videoSrcProgress = Number(video.player?.position) > 0 ? Number(video.player?.position) : '';
 
@@ -207,39 +164,6 @@ const VideoPlayer = ({
       setInfoDialogContent('');
     }, 500);
   };
-
-  const handleVideoEnd =
-    (
-      youtubeId: string,
-      watched: boolean,
-      setSponsorSegmentSkipped?: Dispatch<SetStateAction<SponsorSegmentsSkippedType>>,
-    ) =>
-    async (videoTag: VideoTag) => {
-      const currentTime = Number(videoTag.currentTarget.currentTime);
-
-      const videoProgressResponse = await updateVideoProgressById({
-        youtubeId,
-        currentProgress: currentTime,
-      });
-
-      const { data: videoProgressResponseData } = videoProgressResponse;
-
-      if (videoProgressResponseData?.watched && watched !== videoProgressResponseData.watched) {
-        onWatchStateChanged?.(true);
-      }
-
-      setSponsorSegmentSkipped?.((segments: SponsorSegmentsSkippedType) => {
-        const keys = Object.keys(segments);
-
-        keys.forEach(uuid => {
-          segments[uuid] = { from: 0, to: 0 };
-        });
-
-        return segments;
-      });
-
-      onVideoEnd?.();
-    };
 
   useEffect(() => {
     if (mutePressed) {
@@ -434,24 +358,25 @@ const VideoPlayer = ({
               videoTag.currentTarget.volume = volumeFromStorage;
               videoTag.currentTarget.playbackRate = Number(playBackSpeedFromStorage ?? 1);
             }}
-            onTimeUpdate={handleTimeUpdate(
-              videoId,
-              watched,
-              sponsorBlock,
-              setSkippedSegments,
-              onWatchStateChanged,
-            )}
-            onPause={async (videoTag: VideoTag) => {
+            onTimeUpdate={(videoTag: VideoTag) => {
               const currentTime = Number(videoTag.currentTarget.currentTime);
-
-              if (currentTime < 10 || currentTime > duration * 0.95) return;
-
-              await updateVideoProgressById({
-                youtubeId: videoId,
-                currentProgress: currentTime,
+              sponsor.onTimeUpdate(currentTime, time => {
+                videoTag.currentTarget.currentTime = time;
               });
+              playbackProgress.onTimeUpdate(currentTime, videoTag.currentTarget.duration);
             }}
-            onEnded={handleVideoEnd(videoId, watched)}
+            onPause={() => {
+              playbackProgress.onPause();
+            }}
+            onEnded={(videoTag: VideoTag) => {
+              playbackProgress.onTimeUpdate(
+                videoTag.currentTarget.currentTime,
+                videoTag.currentTarget.duration,
+              );
+              playbackProgress.onEnded();
+              sponsor.reset();
+              onVideoEnd?.();
+            }}
             onError={playbackPreparation.handleError}
             onKeyDown={e => {
               if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -606,6 +531,12 @@ const VideoPlayer = ({
       </div>
     </>
   );
+};
+
+// Fork-owned orchestration selects the enhanced or native surface. Keep the
+// native implementation in this upstream component for a low-conflict hook.
+const VideoPlayer = (props: VideoPlayerProps) => {
+  return <PlaybackPlayer NativePlayer={NativeVideoPlayer} {...props} />;
 };
 
 export default VideoPlayer;

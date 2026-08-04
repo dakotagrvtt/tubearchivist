@@ -17,6 +17,7 @@ def test_fork_feature_flags_are_default_on():
 
     assert defaults == {
         "enable_fork_audio_tracks": True,
+        "enable_fork_player": True,
         "enable_fork_playback": True,
     }
     assert set(get_application_serializer_fields()) == set(defaults)
@@ -26,6 +27,7 @@ def test_fork_feature_flags_are_default_on():
 
     effective = AppConfig.__new__(AppConfig)._effective_defaults()
     assert effective["application"]["enable_fork_audio_tracks"] is True
+    assert effective["application"]["enable_fork_player"] is True
     assert effective["application"]["enable_fork_playback"] is True
 
 

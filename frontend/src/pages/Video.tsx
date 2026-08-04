@@ -216,6 +216,15 @@ const Video = () => {
   const starRating = convertStarRating(video?.stats?.average_rating);
   const comments = commentsResponseData;
   const useSiUnits = userConfig.file_size_unit === FileSizeUnits.Metric;
+  const autoplayPlaylist = playlistAutoplay
+    ? playlistNav?.find(playlist => playlist.playlist_meta.playlist_id === playlistIdForAutoplay)
+    : undefined;
+  const nextVideo = autoplayPlaylist?.playlist_next
+    ? {
+        title: autoplayPlaylist.playlist_next.title,
+        thumbnail: `${getApiUrl()}${autoplayPlaylist.playlist_next.vid_thumb}`,
+      }
+    : undefined;
 
   console.log('playlistNav', playlistNav);
 
@@ -230,6 +239,7 @@ const Video = () => {
         video={video}
         sponsorBlock={sponsorBlock}
         autoplay={playlistAutoplay}
+        nextVideo={nextVideo}
         seekToTimestamp={seekToTimestamp}
         setSeekToTimestamp={setSeekToTimestamp}
         onWatchStateChanged={() => {
