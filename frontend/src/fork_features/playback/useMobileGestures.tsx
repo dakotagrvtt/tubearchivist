@@ -6,9 +6,21 @@ const SEEK_STORAGE_KEY = 'forkPlayerSeekInterval';
 const DOUBLE_TAP_STORAGE_KEY = 'forkPlayerDoubleTap';
 const SWIPE_STORAGE_KEY = 'forkPlayerSwipeControls';
 const SEEK_INTERVALS = [5, 10, 15, 30];
+const BRIGHTNESS_MIN = 0.35;
+const BRIGHTNESS_MAX = 1.5;
+const BRIGHTNESS_STEP = 0.05;
 
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.min(Math.max(value, minimum), maximum);
+
+const snapBrightness = (value: number) =>
+  Number(
+    clamp(
+      Math.round(value / BRIGHTNESS_STEP) * BRIGHTNESS_STEP,
+      BRIGHTNESS_MIN,
+      BRIGHTNESS_MAX,
+    ).toFixed(2),
+  );
 
 const readInterval = () => {
   const value = Number(localStorage.getItem(SEEK_STORAGE_KEY));
@@ -39,7 +51,6 @@ export const useMobileGestures = (playerRef: React.RefObject<MediaPlayerInstance
   const [feedback, setFeedback] = useState<string | null>(null);
   const startRef = useRef<GestureStart | null>(null);
   const lastTapRef = useRef<{ time: number; side: 'left' | 'right' } | null>(null);
-  const tapTimerRef = useRef<number | undefined>(undefined);
   const feedbackTimerRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
@@ -59,7 +70,6 @@ export const useMobileGestures = (playerRef: React.RefObject<MediaPlayerInstance
       if (feedbackTimerRef.current !== undefined) {
         window.clearTimeout(feedbackTimerRef.current);
       }
-      if (tapTimerRef.current !== undefined) window.clearTimeout(tapTimerRef.current);
     },
     [],
   );
@@ -100,7 +110,7 @@ export const useMobileGestures = (playerRef: React.RefObject<MediaPlayerInstance
       }
       showFeedback(`Player volume ${Math.round(volume * 100)}%`);
     } else {
-      const nextBrightness = clamp(start.brightness + adjustment, 0.35, 1.5);
+      const nextBrightness = snapBrightness(start.brightness + adjustment);
       setBrightness(nextBrightness);
       showFeedback(`Video brightness ${Math.round(nextBrightness * 100)}%`);
     }
@@ -115,7 +125,6 @@ export const useMobileGestures = (playerRef: React.RefObject<MediaPlayerInstance
     const now = Date.now();
     const previousTap = lastTapRef.current;
     if (previousTap && now - previousTap.time < 300 && previousTap.side === start.side) {
-      if (tapTimerRef.current !== undefined) window.clearTimeout(tapTimerRef.current);
       const direction = start.side === 'left' ? -1 : 1;
       const currentTime = playerRef.current?.currentTime ?? 0;
       if (playerRef.current) {
@@ -125,10 +134,6 @@ export const useMobileGestures = (playerRef: React.RefObject<MediaPlayerInstance
       lastTapRef.current = null;
     } else {
       lastTapRef.current = { time: now, side: start.side };
-      tapTimerRef.current = window.setTimeout(() => {
-        playerRef.current?.remoteControl.toggleControls();
-        lastTapRef.current = null;
-      }, 300);
     }
   };
 

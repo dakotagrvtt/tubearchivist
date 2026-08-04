@@ -134,9 +134,11 @@ in-memory WebVTT track. No chapter thumbnails, image sprites, transcript panel,
 or quality selector is generated. Playlist previous/next, autoplay, repeat, and
 shuffle state is kept in the browser and remains unavailable when the Enhanced
 Player switch is disabled. Mobile double-tap seek and vertical player-volume or
-video-brightness gestures can be configured below the player. These gestures
-change the media element and video presentation only; browser pages cannot
-change Android's system volume or screen brightness.
+video-brightness gestures can be configured below the player. Brightness swipes
+use 5% steps across 35%–150%, making the 100% setting easy to restore. Preset
+playback rates are available in a nested Speed menu. These gestures change the
+media element and video presentation only; browser pages cannot change
+Android's system volume or screen brightness.
 
 When Multi-Audio Playback is enabled and a video has multiple archived audio
 streams, the backend creates one cached HLS video presentation with alternate

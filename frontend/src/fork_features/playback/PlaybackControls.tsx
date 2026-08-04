@@ -1,6 +1,7 @@
-import { PIPButton, useMediaState, usePlaybackRateOptions } from '@vidstack/react';
+import { Menu, PIPButton, useMediaState, usePlaybackRateOptions } from '@vidstack/react';
 import {
   defaultLayoutIcons,
+  DefaultMenuButton,
   DefaultMenuRadioGroup,
   DefaultMenuSection,
 } from '@vidstack/react/player/layouts/default';
@@ -12,18 +13,24 @@ export const SpeedMenuSection = () => {
   if (options.disabled) return null;
 
   return (
-    <DefaultMenuSection
-      label="Speed"
-      value={options.selectedValue === '1' ? 'Normal' : `${options.selectedValue}x`}
-    >
-      <div className="fork-speed-section">
-        <DefaultMenuRadioGroup
-          value={options.selectedValue ?? '1'}
-          options={options.map(option => ({ label: option.label, value: option.value }))}
-          onChange={value => options.find(option => option.value === value)?.select()}
-        />
-      </div>
-    </DefaultMenuSection>
+    <Menu.Root className="fork-speed-menu vds-menu">
+      <DefaultMenuButton
+        label="Speed"
+        hint={options.selectedValue === '1' ? 'Normal' : `${options.selectedValue}x`}
+        Icon={defaultLayoutIcons.Menu.SpeedUp}
+      />
+      <Menu.Items className="vds-menu-items">
+        <DefaultMenuSection label="Speed">
+          <div className="fork-speed-section">
+            <DefaultMenuRadioGroup
+              value={options.selectedValue ?? '1'}
+              options={options.map(option => ({ label: option.label, value: option.value }))}
+              onChange={value => options.find(option => option.value === value)?.select()}
+            />
+          </div>
+        </DefaultMenuSection>
+      </Menu.Items>
+    </Menu.Root>
   );
 };
 
