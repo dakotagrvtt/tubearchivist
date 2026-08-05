@@ -320,7 +320,7 @@ const EnhancedVideoPlayer = ({
                 noGestures
                 slots={{
                   googleCastButton: null,
-                  settingsMenuItemsStart: <SpeedMenuSection />,
+                  speedMenuItemsStart: <SpeedMenuSection />,
                   smallLayout: {
                     afterFullscreenButton: <MobilePipButton />,
                   },
