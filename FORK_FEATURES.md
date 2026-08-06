@@ -1,5 +1,8 @@
 # Fork features
 
+See `FORK_ROADMAP.md` for the ordered implementation plan and handoff records
+for upcoming fork work.
+
 This fork contains two kinds of additions:
 
 - **Optional extensions** contribute settings or lifecycle behavior through the
