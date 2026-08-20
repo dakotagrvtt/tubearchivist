@@ -45,10 +45,7 @@ const getLanguageLabel = (language?: string | null): string | null => {
   return code;
 };
 
-const getUsefulAudioTitle = (
-  title?: string | null,
-  language?: string | null,
-): string | null => {
+const getUsefulAudioTitle = (title?: string | null, language?: string | null): string | null => {
   if (!title) {
     return null;
   }

@@ -272,9 +272,9 @@ class DownloadApiView(ApiBaseView):
                 "status": "ignore",
                 "timestamp": int(datetime.now().timestamp()),
             }
-            ElasticWrap(
-                f"ta_download/_doc/{video_id}?refresh=true"
-            ).put(data=ignore_doc)
+            ElasticWrap(f"ta_download/_doc/{video_id}?refresh=true").put(
+                data=ignore_doc
+            )
             return Response(data_serializer.data)
 
         _, status_code = PendingInteract(video_id).get_item()

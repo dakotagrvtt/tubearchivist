@@ -13,7 +13,7 @@ def _number(value: Any) -> float | None:
     return number if number == number else None
 
 
-def normalize_chapters(
+def normalize_chapters(  # noqa: C901
     raw_chapters: Any, duration: Any = None
 ) -> list[dict[str, float | str]]:
     """Return safe, ordered chapter intervals suitable for WebVTT."""

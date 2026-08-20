@@ -2,9 +2,7 @@ import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import ChannelOverview from '../components/ChannelOverview';
 import { useEffect, useState } from 'react';
 import loadChannelById, { ChannelResponseType } from '../api/loader/loadChannelById';
-import loadAppsettingsConfig, {
-  AppSettingsConfigType,
-} from '../api/loader/loadAppsettingsConfig';
+import loadAppsettingsConfig, { AppSettingsConfigType } from '../api/loader/loadAppsettingsConfig';
 import Linkify from '../components/Linkify';
 import deleteChannel from '../api/actions/deleteChannel';
 import Routes from '../configuration/routes/RouteList';

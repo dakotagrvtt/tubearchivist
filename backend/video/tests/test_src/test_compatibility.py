@@ -11,7 +11,7 @@ from video.src import index as video_index
 from video.src import media_streams, subtitle
 
 
-def test_existing_video_redownload_refreshes_enriched_streams_from_cache(
+def test_redownload_refreshes_enriched_streams_from_cache(  # noqa: C901
     monkeypatch, tmp_path
 ):
     """Force redownloads must refresh enriched streams from the download
@@ -115,12 +115,8 @@ def test_existing_video_redownload_refreshes_enriched_streams_from_cache(
     monkeypatch.setattr(reindex_module, "AppConfig", _Config)
     monkeypatch.setattr(index_generic, "YtWrap", _YtWrap)
     monkeypatch.setattr(index_generic, "ElasticWrap", _ElasticWrap)
-    monkeypatch.setattr(
-        EnvironmentSettings, "CACHE_DIR", str(cache_dir)
-    )
-    monkeypatch.setattr(
-        EnvironmentSettings, "MEDIA_DIR", str(media_dir)
-    )
+    monkeypatch.setattr(EnvironmentSettings, "CACHE_DIR", str(cache_dir))
+    monkeypatch.setattr(EnvironmentSettings, "MEDIA_DIR", str(media_dir))
     monkeypatch.setattr(media_streams.subprocess, "run", _ffprobe)
     monkeypatch.setattr(
         media_streams,

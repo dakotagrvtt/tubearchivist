@@ -6,7 +6,8 @@ from typing import Any
 
 
 class PlaylistNavEnricher:
-    """Expose the ordered downloaded queue without changing playlist storage."""
+    """Expose the ordered downloaded queue without changing
+    playlist storage."""
 
     def enrich_nav(
         self, nav: dict[str, Any], playlist: dict[str, Any]
