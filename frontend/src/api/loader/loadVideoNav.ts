@@ -23,6 +23,13 @@ export type VideoNavResponseType = {
     downloaded: boolean;
     vid_thumb: string;
   };
+  playlist_entries: {
+    youtube_id: string;
+    title: string;
+    uploader: string | null;
+    idx: number;
+    downloaded: boolean;
+  }[];
 };
 
 const loadVideoNav = async (youtubeVideoId: string) => {

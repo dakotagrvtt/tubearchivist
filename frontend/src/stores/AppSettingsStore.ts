@@ -40,6 +40,7 @@ export const useAppSettingsStore = create<AppSettingsState>(set => ({
       enable_snapshot: false,
       enable_cast: false,
       enable_fork_audio_tracks: true,
+      enable_fork_multi_audio_playback: true,
       enable_fork_player: true,
       enable_fork_playback: true,
     },

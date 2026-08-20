@@ -60,6 +60,7 @@ class ApplicationConfigType(TypedDict):
     enable_snapshot: bool
     enable_cast: bool
     enable_fork_audio_tracks: bool
+    enable_fork_multi_audio_playback: bool
     enable_fork_player: bool
     enable_fork_playback: bool
 

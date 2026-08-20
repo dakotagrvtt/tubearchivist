@@ -10,8 +10,10 @@ class _Connection:
 
     @staticmethod
     def scan_iter(match):
-        assert match == "ta:playback:*"
-        return [b"ta:playback:one", b"ta:playback:one:lock"]
+        if match == "ta:playback:*":
+            return [b"ta:playback:one", b"ta:playback:one:lock"]
+        assert match == "ta:hls:*"
+        return [b"ta:hls:one"]
 
     def delete(self, key):
         self.deleted.append(key)
@@ -38,8 +40,23 @@ def test_clear_playback_redis_state():
 
     removed = startup.clear_redis_state(redis)
 
-    assert removed == 2
+    assert removed == 3
     assert redis.conn.deleted == [
         b"ta:playback:one",
         b"ta:playback:one:lock",
+        b"ta:hls:one",
     ]
+
+
+def test_cleanup_hls_cache_removes_old_presentations(monkeypatch, tmp_path):
+    monkeypatch.setattr(EnvironmentSettings, "CACHE_DIR", str(tmp_path))
+    hls = tmp_path / "hls"
+    hls.mkdir()
+    (hls / "old").mkdir()
+    (hls / "old" / "master.m3u8").write_text("old")
+    import os
+
+    os.utime(hls / "old", (1, 1))
+
+    assert startup.cleanup_hls_cache(max_age_seconds=10) == 1
+    assert not (hls / "old").exists()

@@ -223,6 +223,20 @@
                 "comment_count": {
                     "type": "long"
                 },
+                "chapters": {
+                    "properties": {
+                        "start": {
+                            "type": "float"
+                        },
+                        "end": {
+                            "type": "float"
+                        },
+                        "title": {
+                            "type": "keyword",
+                            "index": false
+                        }
+                    }
+                },
                 "date_downloaded": {
                     "type": "date",
                     "format": "epoch_second"

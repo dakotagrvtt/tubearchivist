@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import mimetypes
+import os
 from typing import Any
 
 from appsettings.src.config import AppConfig
@@ -10,6 +11,12 @@ from common.serializers import ErrorResponseSerializer
 from common.src.es_connect import ElasticWrap
 from common.src.ta_redis import RedisArchivist
 from django.http import HttpResponse
+from fork_features.playback.hls import (
+    hls_asset_path,
+    hls_lock_key,
+    hls_status_key,
+    prepare_hls_playback,
+)
 from fork_features.playback.media_paths import (
     normalize_media_url,
     resolve_archived_media_path,
@@ -212,3 +219,99 @@ class PlaybackViewHandler:
         if media_url.lower().endswith(".mp4"):
             return Response({"status": "ready"})
         return Response(self._status_response(video_id))
+
+    @staticmethod
+    def _hls_preparing_response():
+        response = Response({"status": "preparing"}, status=202)
+        response["Retry-After"] = "5"
+        return response
+
+    @classmethod
+    def _queue_hls(
+        cls,
+        request,
+        video_id: str,
+        media_url: str,
+        audio_streams: list[dict[str, Any]],
+    ):
+        """Return active HLS state or enqueue recoverable work."""
+        redis = RedisArchivist()
+        status = redis.get_message_dict(hls_status_key(video_id))
+        query_params = getattr(request, "query_params", {})
+        retry_failed = (
+            request.method == "GET" and query_params.get("retry") == "1"
+        )
+        if status.get("status") == "failed" and not retry_failed:
+            return Response(
+                {"error": status.get("error", "HLS preparation failed")},
+                status=500,
+            )
+
+        lock_key = redis.NAME_SPACE + hls_lock_key(video_id)
+        worker_active = bool(redis.conn.exists(lock_key))
+        if (
+            request.method == "HEAD"
+            or status.get("status") == "queued"
+            or worker_active
+        ):
+            return cls._hls_preparing_response()
+
+        redis.set_message(
+            hls_status_key(video_id), {"status": "queued"}, expire=300
+        )
+        try:
+            prepare_hls_playback.delay(video_id, media_url, audio_streams)
+        except Exception:  # pragma: no cover - broker boundary
+            redis.set_message(
+                hls_status_key(video_id),
+                {
+                    "status": "failed",
+                    "error": "HLS preparation could not be queued",
+                },
+                expire=300,
+            )
+            return Response(
+                {"error": "HLS preparation could not be queued"}, status=503
+            )
+
+        return cls._hls_preparing_response()
+
+    def hls(self, request, video_id: str, asset: str = "master.m3u8"):
+        """Authorize one generated HLS playlist or segment."""
+        config = AppConfig().config
+        if not is_feature_enabled(
+            "multi_audio_playback", config
+        ) or not is_feature_enabled("audio_tracks", config):
+            return Response({"status": "disabled"}, status=404)
+
+        media_url, _, error = self._get_media(video_id)
+        if error:
+            return error
+        streams = self.view.response.get("streams", [])
+        audio_streams = [
+            stream for stream in streams if stream.get("type") == "audio"
+        ]
+        if len(audio_streams) < 2:
+            return Response({"status": "unavailable"}, status=404)
+
+        try:
+            asset_path = hls_asset_path(video_id, asset)
+        except ValueError:
+            return Response({"error": "invalid HLS asset"}, status=400)
+
+        if os.path.isfile(asset_path) and os.path.getsize(asset_path) > 0:
+            content_type = (
+                "application/vnd.apple.mpegurl"
+                if asset.endswith(".m3u8")
+                else "video/mp2t"
+            )
+            return self._redirect(
+                request,
+                f"/protected-hls/{video_id}/{asset}",
+                content_type,
+            )
+
+        if asset != "master.m3u8":
+            return Response({"status": "pending"}, status=404)
+
+        return self._queue_hls(request, video_id, media_url, audio_streams)

@@ -3,6 +3,8 @@ import type { ComponentType, ReactNode } from 'react';
 import type { NextVideoType, VideoPlayerProps } from '../../components/VideoPlayer';
 import { useAppSettingsStore } from '../../stores/AppSettingsStore';
 import EnhancedVideoPlayer from './EnhancedVideoPlayer';
+import usePlaylistController from './usePlaylistController';
+import type { PlaybackTarget } from './types';
 
 type ErrorBoundaryProps = {
   children: ReactNode;
@@ -88,7 +90,7 @@ const NextUpOverlay = ({
 
   return (
     <div className="player-next-up" role="status">
-      <img src={nextVideo.thumbnail} alt="" />
+      {nextVideo.thumbnail && <img src={nextVideo.thumbnail} alt="" />}
       <div>
         <p>Up next in {countdown} seconds</p>
         <h3>{nextVideo.title}</h3>
@@ -101,6 +103,68 @@ const NextUpOverlay = ({
           </button>
         </div>
       </div>
+    </div>
+  );
+};
+
+const PlaylistControls = ({
+  context,
+  repeatMode,
+  setRepeatMode,
+  shuffle,
+  setShuffle,
+  previousTarget,
+  nextTarget,
+  navigate,
+}: {
+  context: NonNullable<PlaybackPlayerProps['playlistContext']>;
+  repeatMode: 'off' | 'one' | 'all';
+  setRepeatMode: (mode: 'off' | 'one' | 'all') => void;
+  shuffle: boolean;
+  setShuffle: (enabled: boolean) => void;
+  previousTarget: () => PlaybackTarget | null;
+  nextTarget: () => PlaybackTarget | null;
+  navigate: (target: PlaybackTarget | null) => void;
+}) => {
+  const previous = previousTarget();
+  const next = nextTarget();
+
+  return (
+    <div className="fork-playlist-controls" aria-label="Playlist controls">
+      <button type="button" disabled={!previous} onClick={() => navigate(previous)}>
+        Previous
+      </button>
+      <button type="button" disabled={!next} onClick={() => navigate(next)}>
+        Next
+      </button>
+      <label>
+        <input
+          type="checkbox"
+          checked={context.autoplay}
+          onChange={event => context.onAutoplayChange(event.target.checked)}
+        />{' '}
+        Autoplay
+      </label>
+      <label>
+        Repeat{' '}
+        <select
+          value={repeatMode}
+          onChange={event => setRepeatMode(event.target.value as 'off' | 'one' | 'all')}
+        >
+          <option value="off">Off</option>
+          <option value="one">One</option>
+          <option value="all">All</option>
+        </select>
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={shuffle}
+          onChange={event => setShuffle(event.target.checked)}
+        />{' '}
+        Shuffle
+      </label>
+      <span className="fork-playlist-name">{context.playlistName}</span>
     </div>
   );
 };
@@ -120,6 +184,8 @@ const PlaybackPlayerSession = ({
 }: PlaybackPlayerSessionProps) => {
   const [sessionFallback, setSessionFallback] = useState(readSessionFallback);
   const [showNextUp, setShowNextUp] = useState(false);
+  const [pendingNext, setPendingNext] = useState<PlaybackTarget | null>(null);
+  const playlist = usePlaylistController(props.playlistContext);
 
   const handleFatalError = () => {
     writeSessionFallback();
@@ -133,7 +199,9 @@ const PlaybackPlayerSession = ({
   };
 
   const handleEnhancedVideoEnd = () => {
-    if (props.nextVideo) {
+    const target = playlist.takeNextTarget();
+    if (props.playlistContext?.autoplay && target) {
+      setPendingNext(target);
       setShowNextUp(true);
       return;
     }
@@ -148,6 +216,7 @@ const PlaybackPlayerSession = ({
       {...props}
       onVideoEnd={handleEnhancedVideoEnd}
       onFatalError={handleFatalError}
+      repeatCurrent={playlist.repeatMode === 'one'}
     />
   );
 
@@ -176,13 +245,33 @@ const PlaybackPlayerSession = ({
       <EnhancedPlayerErrorBoundary fallback={nativePlayer} onError={handleFatalError}>
         {enhancedPlayer}
       </EnhancedPlayerErrorBoundary>
-      {showNextUp && props.nextVideo && (
+      {playerEnabled && props.playlistContext && (
+        <PlaylistControls
+          context={props.playlistContext}
+          repeatMode={playlist.repeatMode}
+          setRepeatMode={playlist.setRepeatMode}
+          shuffle={playlist.shuffle}
+          setShuffle={playlist.setShuffle}
+          previousTarget={playlist.previousTarget}
+          nextTarget={playlist.nextTarget}
+          navigate={playlist.navigate}
+        />
+      )}
+      {showNextUp && props.playlistContext && (
         <NextUpOverlay
-          nextVideo={props.nextVideo}
+          key={pendingNext?.youtube_id ?? props.video.youtube_id}
+          nextVideo={{
+            title: pendingNext?.title ?? props.nextVideo?.title ?? 'Next video',
+            thumbnail:
+              pendingNext?.youtube_id === props.playlistContext.next?.youtube_id
+                ? props.nextVideo?.thumbnail
+                : undefined,
+          }}
           onCancel={() => setShowNextUp(false)}
           onContinue={() => {
             setShowNextUp(false);
-            props.onVideoEnd?.();
+            playlist.navigate(pendingNext);
+            setPendingNext(null);
           }}
         />
       )}

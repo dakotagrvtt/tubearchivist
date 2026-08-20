@@ -7,6 +7,7 @@ from common.src.watched import WatchState
 from common.views_base import AdminWriteOnly, ApiBaseView
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from fork_features.playback.views import PlaybackViewHandler
+from fork_features.registry import get_playlist_nav_enrichers
 from playlist.src.index import YoutubePlaylist
 from rest_framework.response import Response
 from video.serializers import (
@@ -173,6 +174,10 @@ class VideoApiNavView(ApiBaseView):
             playlist.get_from_es()
             playlist.build_nav(video_id)
             if playlist.nav:
+                for enricher in get_playlist_nav_enrichers():
+                    playlist.nav = enricher.enrich_nav(
+                        playlist.nav, playlist.json_data
+                    )
                 playlist_nav.append(playlist.nav)
 
         response_serializer = PlaylistNavItemSerializer(
@@ -316,3 +321,13 @@ class VideoPlaybackStatusView(VideoStreamView):
 
     def get(self, request, video_id):  # pylint: disable=unused-argument
         return PlaybackViewHandler(self).status(video_id)
+
+
+class VideoHlsView(VideoStreamView):
+    """Authorize fork-generated HLS playlists and segments."""
+
+    def get(self, request, video_id, asset):
+        return PlaybackViewHandler(self).hls(request, video_id, asset)
+
+    def head(self, request, video_id, asset):
+        return PlaybackViewHandler(self).hls(request, video_id, asset)
