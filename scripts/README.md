@@ -17,7 +17,7 @@ Default behavior:
 
 1. verify the repo and compose paths exist
 2. take an exclusive deployment lock for the project directory
-3. fetch `fork/v0.5.10` from `origin` and require a clean checkout that can be
+3. fetch `fork/v0.5.11` from `origin` and require a clean checkout that can be
    fast-forwarded to the exact remote commit
 4. validate the external Compose file
 5. build the application image with `--pull` and the Docker build cache

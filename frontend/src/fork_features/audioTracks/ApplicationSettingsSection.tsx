@@ -9,7 +9,7 @@
  * then calls props.onRefresh() so the parent page re-syncs.
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import updateAppsettingsConfig, {
   AppSettingsConfigUpdate,
 } from '../../api/actions/updateAppsettingsConfig';
@@ -20,19 +20,29 @@ import { getApiErrorMessage } from '../../functions/APIClient';
 
 const AudioTracksAppSection = ({ appSettingsConfig, onRefresh }: AppSettingsSectionProps) => {
   const audioTracksEnabled = appSettingsConfig.application.enable_fork_audio_tracks ?? true;
-  const [audioMultistreams, setAudioMultistreams] = useState(false);
-  const [audioLanguages, setAudioLanguages] = useState<string | null>(null);
+  const [audioMultistreams, setAudioMultistreams] = useState(
+    appSettingsConfig.downloads.audio_multistreams ?? false,
+  );
+  const [audioLanguages, setAudioLanguages] = useState<string | null>(
+    appSettingsConfig.downloads.audio_languages || null,
+  );
   const [audioWarning, setAudioWarning] = useState<string | null>(null);
 
-  // Sync local state when the parent config refreshes.
-  useEffect(() => {
-    if (!audioTracksEnabled) {
-      return;
+  const [previousSettings, setPreviousSettings] = useState({
+    config: appSettingsConfig,
+    enabled: audioTracksEnabled,
+  });
+  if (
+    appSettingsConfig !== previousSettings.config ||
+    audioTracksEnabled !== previousSettings.enabled
+  ) {
+    setPreviousSettings({ config: appSettingsConfig, enabled: audioTracksEnabled });
+    if (audioTracksEnabled) {
+      setAudioMultistreams(appSettingsConfig.downloads.audio_multistreams ?? false);
+      setAudioLanguages(appSettingsConfig.downloads.audio_languages || null);
+      setAudioWarning(null);
     }
-    setAudioMultistreams(appSettingsConfig.downloads.audio_multistreams ?? false);
-    setAudioLanguages(appSettingsConfig.downloads.audio_languages || null);
-    setAudioWarning(null);
-  }, [appSettingsConfig, audioTracksEnabled]);
+  }
 
   if (!audioTracksEnabled) {
     return null;

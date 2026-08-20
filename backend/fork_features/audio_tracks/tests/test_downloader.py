@@ -119,3 +119,60 @@ def test_primary_format_is_not_added_by_audio_hook(monkeypatch, tmp_path):
         assert "format" not in obs
     finally:
         _remove_staging_directory(context)
+
+
+def test_audio_track_download_disables_pot_on_first_attempt(
+    monkeypatch, tmp_path
+):
+    """The first extra-track request must omit a configured POT provider."""
+    calls = []
+
+    class _YtWrap:
+        def __init__(self, _obs, config):
+            calls.append(config)
+
+        def download(self, _youtube_id):
+            output = tmp_path / "video-es.m4a"
+            output.write_bytes(b"audio")
+            return True, True
+
+    monkeypatch.setattr(downloader, "YtWrap", _YtWrap)
+    config = {"downloads": {"pot_provider_url": "http://pot:4416"}}
+
+    result = downloader.AudioTracksDownloadHook._download_audio_track(
+        "video", "audio-es", "es", str(tmp_path), config, None
+    )
+
+    assert result == str(tmp_path / "video-es.m4a")
+    assert calls == [{"downloads": {}}]
+    assert config == {"downloads": {"pot_provider_url": "http://pot:4416"}}
+
+
+def test_audio_track_download_falls_back_to_configured_pot(
+    monkeypatch, tmp_path
+):
+    """A failed no-POT request retries with the configured provider."""
+    calls = []
+
+    class _YtWrap:
+        def __init__(self, _obs, config):
+            calls.append(config)
+
+        def download(self, _youtube_id):
+            if len(calls) == 2:
+                (tmp_path / "video-es.m4a").write_bytes(b"audio")
+                return True, True
+            return False, "no-POT request failed"
+
+    monkeypatch.setattr(downloader, "YtWrap", _YtWrap)
+    config = {"downloads": {"pot_provider_url": "http://pot:4416"}}
+
+    result = downloader.AudioTracksDownloadHook._download_audio_track(
+        "video", "audio-es", "es", str(tmp_path), config, None
+    )
+
+    assert result == str(tmp_path / "video-es.m4a")
+    assert calls == [
+        {"downloads": {}},
+        {"downloads": {"pot_provider_url": "http://pot:4416"}},
+    ]

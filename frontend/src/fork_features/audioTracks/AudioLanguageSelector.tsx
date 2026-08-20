@@ -5,17 +5,14 @@
  * from upstream shared components.
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import LoadingIndicator from '../../components/LoadingIndicator';
 
 type AudioLanguageSelectorProps = {
   name: string;
   value: string | null;
   oldValue: string | null | undefined;
-  updateCallback: (
-    name: string,
-    value: string | boolean | number | null,
-  ) => void | Promise<void>;
+  updateCallback: (name: string, value: string | boolean | number | null) => void | Promise<void>;
 };
 
 const AudioLanguageSelector = ({
@@ -28,9 +25,11 @@ const AudioLanguageSelector = ({
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  useEffect(() => {
+  const [previousValue, setPreviousValue] = useState(value);
+  if (value !== previousValue) {
+    setPreviousValue(value);
     setLocalValue(value ?? '');
-  }, [value]);
+  }
 
   const normalizedOld = oldValue ?? '';
   const hasChanged = localValue !== normalizedOld;

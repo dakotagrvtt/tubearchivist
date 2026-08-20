@@ -8,7 +8,7 @@
  * then calls props.onRefresh() so the parent page re-syncs.
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import updateChannelOverwrites from '../../api/actions/updateChannelOverwrite';
 import ToggleConfig from '../../components/ToggleConfig';
 import AudioLanguageSelector from './AudioLanguageSelector';
@@ -22,16 +22,21 @@ const AudioTracksChannelSection = ({
 }: ChannelSettingsSectionProps) => {
   const audioTracksEnabled = appSettingsConfig.application.enable_fork_audio_tracks ?? true;
   // null means "use global setting" (no per-channel overwrite stored).
-  const [audioMultistreams, setAudioMultistreams] = useState<boolean | null>(null);
-  const [audioLanguages, setAudioLanguages] = useState<string | null>(null);
+  const [audioMultistreams, setAudioMultistreams] = useState<boolean | null>(
+    channel.channel_overwrites?.audio_multistreams ?? null,
+  );
+  const [audioLanguages, setAudioLanguages] = useState<string | null>(
+    channel.channel_overwrites?.audio_languages ?? null,
+  );
   const [audioWarning, setAudioWarning] = useState<string | null>(null);
 
-  // Sync local state when the parent refreshes.
-  useEffect(() => {
+  const [previousChannel, setPreviousChannel] = useState(channel);
+  if (channel !== previousChannel) {
+    setPreviousChannel(channel);
     setAudioMultistreams(channel.channel_overwrites?.audio_multistreams ?? null);
     setAudioLanguages(channel.channel_overwrites?.audio_languages ?? null);
     setAudioWarning(null);
-  }, [channel]);
+  }
 
   const globalAudioMultistream = appSettingsConfig.downloads.audio_multistreams ?? false;
   const effectiveAudioMultistream = audioMultistreams ?? globalAudioMultistream;

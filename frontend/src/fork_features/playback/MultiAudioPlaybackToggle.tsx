@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import updateAppsettingsConfig from '../../api/actions/updateAppsettingsConfig';
 import ToggleConfig from '../../components/ToggleConfig';
 import { getApiErrorMessage } from '../../functions/APIClient';
@@ -11,10 +11,12 @@ const MultiAudioPlaybackToggle = ({ appSettingsConfig, onRefresh }: AppSettingsS
   const [enabled, setEnabled] = useState(configuredValue);
   const [warning, setWarning] = useState<string | null>(null);
 
-  useEffect(() => {
+  const [previousConfiguredValue, setPreviousConfiguredValue] = useState(configuredValue);
+  if (configuredValue !== previousConfiguredValue) {
+    setPreviousConfiguredValue(configuredValue);
     setEnabled(configuredValue);
     setWarning(null);
-  }, [configuredValue]);
+  }
 
   const handleUpdate = async (_name: string, value: boolean) => {
     try {

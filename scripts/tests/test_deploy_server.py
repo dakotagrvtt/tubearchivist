@@ -12,7 +12,7 @@ import pytest
 
 
 SCRIPT = Path(__file__).parents[1] / "deploy-server.sh"
-BRANCH = "fork/v0.5.10"
+BRANCH = "fork/v0.5.11"
 
 
 def run_command(*args: str | Path, cwd: Path) -> subprocess.CompletedProcess:
