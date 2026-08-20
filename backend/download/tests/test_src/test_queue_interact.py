@@ -1,12 +1,11 @@
-"""Regression tests for download queue cleanup behavior."""
+"""Regression tests for filesystem queue cleanup behavior."""
 
+from appsettings.src import filesystem
 from download.src import queue_interact
 
 
-def test_delete_item_can_suppress_missing_queue_item_errors(monkeypatch):
-    """
-    Cleanup of an already-removed item must pass through print suppression.
-    """
+def test_filesystem_cleanup_suppresses_missing_queue_item_errors(monkeypatch):
+    """Scanner cleanup must delete a queue item without printing a 404."""
     calls = []
 
     class _ElasticWrap:
@@ -19,7 +18,7 @@ def test_delete_item_can_suppress_missing_queue_item_errors(monkeypatch):
 
     monkeypatch.setattr(queue_interact, "ElasticWrap", _ElasticWrap)
 
-    queue_interact.PendingInteract("video").delete_item(print_error=False)
+    filesystem.Scanner._cleanup("video")
 
     assert calls == [
         ("init", "ta_download/_doc/video"),
