@@ -138,6 +138,12 @@ const GoogleCast = ({ video, setRefresh, onWatchStateChanged }: GoogleCastProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setRefresh, video]);
 
+  window['__onGCastApiAvailable'] ??= function (isAvailable: boolean) {
+    if (isAvailable) {
+      setup();
+    }
+  };
+
   const startPlayback = useCallback(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const chrome = (globalThis as any).chrome;
@@ -196,14 +202,6 @@ const GoogleCast = ({ video, setRefresh, onWatchStateChanged }: GoogleCastProps)
   }, [video?.media_url, video?.subtitles, video?.title, video?.vid_thumb_url]);
 
   useEffect(() => {
-    window['__onGCastApiAvailable'] = function (isAvailable: boolean) {
-      if (isAvailable) {
-        setup();
-      }
-    };
-  }, [setup]);
-
-  useEffect(() => {
     console.log('isConnected', isConnected);
     if (isConnected) {
       startPlayback();
@@ -215,17 +213,16 @@ const GoogleCast = ({ video, setRefresh, onWatchStateChanged }: GoogleCastProps)
   }
 
   return (
-    <>
-      <>
-        <script
-          type="text/javascript"
-          src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"
-        ></script>
+    <div>
+      <script
+        async
+        type="text/javascript"
+        src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"
+      />
 
-        {/* @ts-expect-error React does not know what to do with the google-cast-launcher, but it works. */}
-        <google-cast-launcher id="castbutton"></google-cast-launcher>
-      </>
-    </>
+      {/* @ts-expect-error React does not know what to do with the google-cast-launcher, but it works. */}
+      <google-cast-launcher id="castbutton"></google-cast-launcher>
+    </div>
   );
 };
 

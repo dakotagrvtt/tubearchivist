@@ -3,7 +3,7 @@
 
 <div align="center">
 <a href="https://hub.docker.com/r/bbilly1/tubearchivist" target="_blank"><img src="https://tiles.tilefy.me/t/tubearchivist-docker.png" alt="tubearchivist-docker" title="Tube Archivist Docker Pulls" height="50" width="190"/></a>
-<a href="https://github.com/tubearchivist/tubearchivist/stargazers" target="_blank"><img src="https://tiles.tilefy.me/t/tubearchivist-github-star.png" alt="tubearchivist-github-star" title="Tube Archivist GitHub Stars" height="50" width="190"/></a>
+<a href="https://github.com/tubearchivist/tubearchivist" target="_blank"><img src="https://tiles.tilefy.me/t/tubearchivist-github-star.png" alt="tubearchivist-github-star" title="Tube Archivist GitHub Stars" height="50" width="190"/></a>
 <a href="https://github.com/tubearchivist/tubearchivist/forks" target="_blank"><img src="https://tiles.tilefy.me/t/tubearchivist-github-forks.png" alt="tubearchivist-github-forks" title="Tube Archivist GitHub Forks" height="50" width="190"/></a>
 <a href="https://www.tubearchivist.com/discord" target="_blank"><img src="https://tiles.tilefy.me/t/tubearchivist-discord.png" alt="tubearchivist-discord" title="TA Discord Server Members" height="50" width="190"/></a>
 </div>
@@ -54,7 +54,7 @@ Take a look at the example [docker-compose.yml](https://github.com/tubearchivist
 
 All environment variables are explained in detail in the docs [here](https://docs.tubearchivist.com/installation/env-vars/).
 
-Both `TA_PASSWORD` and `ELASTIC_PASSWORD` can be suffixed with `_FILE` to allow passing in passwords as secretes. `_FILE` is a convention used by some images including [ElasticSearch](https://www.elastic.co/docs/deploy-manage/deploy/self-managed/install-elasticsearch-docker-configure)
+Both `TA_PASSWORD` and `ELASTIC_PASSWORD` can be suffixed with `_FILE` to allow passing in passwords as secrets. `_FILE` is a convention used by some images including [ElasticSearch](https://www.elastic.co/docs/deploy-manage/deploy/self-managed/install-elasticsearch-docker-configure)
 
 ### TubeArchivist
 
