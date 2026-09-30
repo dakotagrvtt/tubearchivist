@@ -36,6 +36,7 @@ const usePlaybackPreparation = (videoId: string, mediaUrl: string) => {
   const playbackEnabled =
     useAppSettingsStore(state => state.appSettingsConfig.application.enable_fork_playback) ?? true;
   const videoUrl = playbackEnabled ? `/api/video/${videoId}/stream/` : mediaUrl;
+  const mediaType: 'video/mp4' | undefined = playbackEnabled ? 'video/mp4' : undefined;
   const [state, setState] = useState(() => initialState(videoUrl));
   const current = state.videoUrl === videoUrl ? state : initialState(videoUrl);
 
@@ -103,7 +104,12 @@ const usePlaybackPreparation = (videoId: string, mediaUrl: string) => {
     }
   }, [current, playbackEnabled, videoUrl]);
 
-  return { ...current, handleError, videoUrl };
+  return {
+    ...current,
+    handleError,
+    videoUrl,
+    mediaType,
+  };
 };
 
 export default usePlaybackPreparation;

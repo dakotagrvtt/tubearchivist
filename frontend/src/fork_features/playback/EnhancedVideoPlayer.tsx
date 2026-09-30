@@ -4,6 +4,7 @@ import {
   MediaProvider,
   Track,
   type MediaPlayerInstance,
+  type PlayerSrc,
 } from '@vidstack/react';
 import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default';
 import '@vidstack/react/player/styles/default/theme.css';
@@ -55,6 +56,13 @@ const EnhancedVideoPlayer = ({
   const hlsPreparation = useHlsPreparation(videoId, video.streams);
   const videoUrl = playbackPreparation.videoUrl;
   const sourceUrl = hlsPreparation.url ?? videoUrl;
+  const source = `${getApiUrl()}${sourceUrl}`;
+  // Prepared streams always serve MP4. An explicit type avoids Vidstack's
+  // HEAD discovery, which cannot queue an uncached container's conversion.
+  const playerSource: PlayerSrc =
+    hlsPreparation.url || !playbackPreparation.mediaType
+      ? source
+      : { src: source, type: playbackPreparation.mediaType };
   const playbackProgress = usePlayerProgress({
     videoId,
     watched: video.player.watched,
@@ -231,7 +239,7 @@ const EnhancedVideoPlayer = ({
               key={sourceKey}
               className="vidstack-player"
               style={{ '--fork-video-brightness': gestures.brightness }}
-              src={`${getApiUrl()}${sourceUrl}`}
+              src={playerSource}
               title={video.title}
               poster={`${getApiUrl()}${video.vid_thumb_url}`}
               autoPlay={autoplay}
