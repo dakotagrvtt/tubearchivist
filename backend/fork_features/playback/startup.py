@@ -14,15 +14,17 @@ HLS_MAX_BYTES = 10 * 1024 * 1024 * 1024
 
 
 def ensure_cache_directory() -> None:
-    """Create the persistent cache used for prepared playback media."""
+    """Prepare persistent playback caches before workers start."""
     os.makedirs(
         os.path.join(EnvironmentSettings.CACHE_DIR, "transcode"),
         exist_ok=True,
     )
-    os.makedirs(
-        os.path.join(EnvironmentSettings.CACHE_DIR, "hls"),
-        exist_ok=True,
-    )
+    hls_root = os.path.join(EnvironmentSettings.CACHE_DIR, "hls")
+    os.makedirs(hls_root, exist_ok=True)
+    # No workers run at startup, so remaining staging directories are stale.
+    for name in os.listdir(hls_root):
+        if name.endswith(".part"):
+            shutil.rmtree(os.path.join(hls_root, name), ignore_errors=True)
     cleanup_hls_cache()
 
 
@@ -30,7 +32,7 @@ def cleanup_hls_cache(
     max_age_seconds: int = HLS_MAX_AGE_SECONDS,
     max_bytes: int = HLS_MAX_BYTES,
 ) -> int:
-    """Reclaim old or oversized generated HLS presentations."""
+    """Reclaim completed HLS presentations without touching worker staging."""
     root = os.path.join(EnvironmentSettings.CACHE_DIR, "hls")
     if not os.path.isdir(root):
         return 0
@@ -39,6 +41,8 @@ def cleanup_hls_cache(
     entries: list[tuple[float, int, str]] = []
     removed = 0
     for name in os.listdir(root):
+        if name.endswith(".part"):
+            continue
         path = os.path.join(root, name)
         try:
             modified = os.path.getmtime(path)
