@@ -203,7 +203,7 @@ class AppConfig:
         """clear old unused keys"""
         cleared = []
         effective = self._effective_defaults()
-        for key, value in self.config.items():
+        for key, value in list(self.config.items()):
             if key not in effective:
                 # complete key removed
                 self.config.pop(key)
