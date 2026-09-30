@@ -335,7 +335,7 @@ const SettingsApplication = () => {
               )}
               <div className="settings-box-wrapper">
                 <div>
-                  <p>Download Speed limit</p>
+                  <p>Download Speed limit (B/s)</p>
                 </div>
                 <InputConfig
                   type="number"
@@ -348,7 +348,7 @@ const SettingsApplication = () => {
               </div>
               <div className="settings-box-wrapper">
                 <div>
-                  <p>Throttled rate limit</p>
+                  <p>Throttled rate limit (B/s)</p>
                 </div>
                 <InputConfig
                   type="number"
@@ -361,7 +361,7 @@ const SettingsApplication = () => {
               </div>
               <div className="settings-box-wrapper">
                 <div>
-                  <p>Sleep interval</p>
+                  <p>Sleep interval (s)</p>
                 </div>
                 <InputConfig
                   type="number"
