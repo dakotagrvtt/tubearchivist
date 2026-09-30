@@ -13,7 +13,7 @@ from fork_features.playback.tasks import (
 
 
 def invalidate_playback_cache(video_id: str) -> None:
-    """Discard prepared media and state after replacing source media."""
+    """Discard prepared media and state after source replacement/deletion."""
     cache_path = playback_cache_path(video_id)
     for stale_path in (
         cache_path,
@@ -31,6 +31,7 @@ def invalidate_playback_cache(video_id: str) -> None:
         import shutil
 
         shutil.rmtree(hls_directory(video_id), ignore_errors=True)
+        # Token-scoped staging remains owned and cleaned by its worker.
         shutil.rmtree(f"{hls_directory(video_id)}.part", ignore_errors=True)
     except (OSError, ValueError) as error:
         print(f"{video_id}: failed to remove HLS cache: {error}")

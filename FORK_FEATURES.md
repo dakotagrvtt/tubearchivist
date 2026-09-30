@@ -90,7 +90,7 @@ precedence over global and per-channel `audio_multistreams` values.
 | Playlist navigation | Invoke registered navigation enrichers | `playback/playlist_nav.py` |
 | Playback API | Route endpoints and delegate the view | `playback/views.py`, `playback/hls.py` |
 | Celery discovery | Re-export playback preparation tasks | `playback/tasks.py`, `playback/hls.py` |
-| Archive replacement | Call cache invalidation | `playback/cache.py` |
+| Archive replacement/deletion | Call cache invalidation after replacing or removing media, including an already missing archive | `playback/cache.py` |
 | Browser playback | Expose the native player through one render hook | Player orchestration, preparation, controls, and lifecycle hooks under `frontend/src/fork_features/playback/` |
 | Range serving | Provide internal Nginx locations | protected media/transcode locations |
 
@@ -147,8 +147,9 @@ When Multi-Audio Playback is enabled and a video has multiple archived audio
 streams, the backend creates one cached HLS video presentation with alternate
 audio renditions. The cache contains one video playlist plus derived audio
 playlists; it does not download another source video or quality. The cache is
-removed when the source archive is replaced and is served only through protected
-Nginx locations. The enhanced player bundles the HLS.js runtime locally, so
+removed when the source archive is replaced or deleted and is served only
+through protected Nginx locations. The enhanced player bundles the HLS.js
+runtime locally, so
 playback does not depend on a third-party CDN. If preparation or browser HLS
 playback fails, the player shows a retryable status and falls back to the
 existing direct media source without disabling the player for the session. A

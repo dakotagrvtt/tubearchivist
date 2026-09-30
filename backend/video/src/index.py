@@ -15,6 +15,7 @@ from common.src.helper import get_duration_sec, get_duration_str, randomizor
 from common.src.index_generic import YouTubeItem
 from django.conf import settings
 from download.src.thumbnails import ThumbManager
+from fork_features.playback.cache import invalidate_playback_cache
 from mutagen.mp4 import MP4, MP4MetadataError
 from playlist.src import index as ta_playlist
 from ryd_client import ryd_client
@@ -384,6 +385,7 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         except FileNotFoundError:
             print(f"{self.youtube_id}: failed {media_url}, continue.")
 
+        invalidate_playback_cache(self.youtube_id)
         self.del_in_playlists()
         self.del_in_es()
         self.delete_subtitles()
