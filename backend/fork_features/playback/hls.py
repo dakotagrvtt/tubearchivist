@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import subprocess
 from typing import Any
 
 from appsettings.src.config import AppConfig
@@ -14,16 +13,17 @@ from common.src.env_settings import EnvironmentSettings
 from common.src.ta_redis import RedisArchivist
 from fork_features.playback.media_paths import safe_path
 from fork_features.playback.startup import cleanup_hls_cache
+from fork_features.playback.tasks import (
+    PLAYBACK_LOCK_TTL,
+    _release_playback_lock,
+    _renew_playback_lock,
+    _run_ffmpeg_with_lease,
+    _source_changed,
+)
 from fork_features.registry import is_feature_enabled
 
-HLS_LOCK_TTL = 60 * 60
+HLS_LOCK_TTL = PLAYBACK_LOCK_TTL
 HLS_STATUS_TTL = 86400
-RELEASE_LOCK_SCRIPT = """
-if redis.call("get", KEYS[1]) == ARGV[1] then
-    return redis.call("del", KEYS[1])
-end
-return 0
-"""
 
 
 def hls_directory(video_id: str) -> str:
@@ -187,10 +187,13 @@ def _generate_hls_output(
     source_path: str,
     temporary_dir: str,
     audio_streams: list[dict[str, Any]],
-) -> bool:
+    redis: RedisArchivist,
+    lock_key: str,
+    lock_token: str,
+    video_id: str,
+) -> tuple[bool, bool]:
     """Build a complete temporary presentation ready for publication."""
-    shutil.rmtree(temporary_dir, ignore_errors=True)
-    os.makedirs(temporary_dir, exist_ok=True)
+    os.makedirs(temporary_dir)
     os.makedirs(os.path.join(temporary_dir, "video"), exist_ok=True)
     for index in range(len(audio_streams)):
         os.makedirs(
@@ -198,19 +201,21 @@ def _generate_hls_output(
         )
 
     command = build_hls_command(source_path, temporary_dir, audio_streams)
-    result = subprocess.run(
+    return_code, lease_owned = _run_ffmpeg_with_lease(
         command,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
+        redis,
+        lock_key,
+        hls_status_key(video_id),
+        lock_token,
     )
+    if not lease_owned:
+        return False, False
     video_playlist = os.path.join(temporary_dir, "video", "index.m3u8")
-    if result.returncode != 0 or not os.path.isfile(video_playlist):
-        return False
+    if return_code != 0 or not os.path.isfile(video_playlist):
+        return False, True
 
     write_master_playlist(temporary_dir, audio_streams)
-    return True
+    return True, True
 
 
 def _prepare_locked_hls(
@@ -218,10 +223,13 @@ def _prepare_locked_hls(
     video_id: str,
     media_url: str,
     audio_streams: list[dict[str, Any]],
+    lock_key: str,
+    lock_token: str,
 ) -> str:
     """Generate and publish HLS while the caller owns the worker lock."""
     output_dir = hls_directory(video_id)
-    temporary_dir = f"{output_dir}.part"
+    # A lost worker may clean up only its own unpublished presentation.
+    temporary_dir = f"{output_dir}.{lock_token}.part"
     try:
         source_path = safe_path(EnvironmentSettings.MEDIA_DIR, media_url)
         if not os.path.isfile(source_path):
@@ -231,14 +239,30 @@ def _prepare_locked_hls(
                 {"status": "failed", "error": "video source is missing"},
             )
             return "failed"
+        source_stat = os.stat(source_path)
 
         if hls_cache_ready(video_id):
             _set_status(redis, video_id, {"status": "ready"})
             return "ready"
 
         _set_status(redis, video_id, {"status": "preparing"})
-        if not _generate_hls_output(source_path, temporary_dir, audio_streams):
-            shutil.rmtree(temporary_dir, ignore_errors=True)
+        generated, lease_owned = _generate_hls_output(
+            source_path,
+            temporary_dir,
+            audio_streams,
+            redis,
+            lock_key,
+            lock_token,
+            video_id,
+        )
+        if not lease_owned or not _renew_playback_lock(
+            redis, lock_key, hls_status_key(video_id), lock_token
+        ):
+            return "lock-lost"
+        if _source_changed(source_path, source_stat):
+            _set_status(redis, video_id, {"status": "pending"})
+            return "stale-source"
+        if not generated:
             _set_status(
                 redis,
                 video_id,
@@ -263,9 +287,14 @@ def _prepare_locked_hls(
         _set_status(redis, video_id, {"status": "ready"})
         return "ready"
     except (OSError, ValueError) as error:
-        shutil.rmtree(temporary_dir, ignore_errors=True)
+        if not _renew_playback_lock(
+            redis, lock_key, hls_status_key(video_id), lock_token
+        ):
+            return "lock-lost"
         _set_status(redis, video_id, {"status": "failed", "error": str(error)})
         return "failed"
+    finally:
+        shutil.rmtree(temporary_dir, ignore_errors=True)
 
 
 @shared_task(name="prepare_hls_playback")
@@ -296,9 +325,8 @@ def prepare_hls_playback(
         return "already-running"
 
     try:
-        return _prepare_locked_hls(redis, video_id, media_url, audio_streams)
+        return _prepare_locked_hls(
+            redis, video_id, media_url, audio_streams, lock_key, token
+        )
     finally:
-        try:
-            redis.conn.eval(RELEASE_LOCK_SCRIPT, 1, lock_key, token)
-        except Exception:  # pragma: no cover - Redis boundary
-            pass
+        _release_playback_lock(redis, lock_key, token)

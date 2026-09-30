@@ -138,3 +138,38 @@ def test_disabled_playback_task_does_not_acquire_lock(monkeypatch):
     assert tasks.prepare_playback.run("video", "video.mkv") == "disabled"
     assert redis.deleted == ["playback:video"]
     assert redis.conn.set_calls == []
+
+
+@pytest.mark.parametrize("exit_during", ["terminate", "kill"])
+def test_stop_process_reaps_child_exiting_during_signal(exit_during):
+    """A child exiting before a signal still needs its final wait."""
+    import subprocess
+
+    class Process:
+        reaped = False
+        wait_calls = 0
+
+        @staticmethod
+        def poll():
+            return None
+
+        @staticmethod
+        def terminate():
+            if exit_during == "terminate":
+                raise ProcessLookupError
+
+        @staticmethod
+        def kill():
+            raise ProcessLookupError
+
+        def wait(self, timeout=None):
+            self.wait_calls += 1
+            if exit_during == "kill" and self.wait_calls == 1:
+                raise subprocess.TimeoutExpired("ffmpeg", timeout)
+            self.reaped = True
+            return -15
+
+    process = Process()
+    tasks._stop_process(process)
+
+    assert process.reaped

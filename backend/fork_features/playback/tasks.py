@@ -140,7 +140,7 @@ def _stop_process(process: subprocess.Popen) -> None:
     try:
         process.terminate()
     except ProcessLookupError:
-        return
+        pass
 
     try:
         process.wait(timeout=30)
@@ -148,7 +148,7 @@ def _stop_process(process: subprocess.Popen) -> None:
         try:
             process.kill()
         except ProcessLookupError:
-            return
+            pass
         process.wait()
 
 
