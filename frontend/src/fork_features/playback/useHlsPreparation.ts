@@ -53,7 +53,7 @@ const useHlsPreparation = (videoId: string, streams: StreamType[] | undefined) =
           credentials: 'include',
         });
         if (cancelled) return;
-        if (response.ok) {
+        if (response.status === 200) {
           setState({
             endpoint,
             url: endpoint,
@@ -65,7 +65,13 @@ const useHlsPreparation = (videoId: string, streams: StreamType[] | undefined) =
         }
         if (response.status === 202 && attempts < 24) {
           attempts += 1;
-          setState(previous => ({ ...previous, isPreparing: true, error: null }));
+          setState(previous => ({
+            endpoint,
+            url: null,
+            isPreparing: true,
+            retryKey: previous.endpoint === endpoint ? previous.retryKey : 0,
+            error: null,
+          }));
           timer = window.setTimeout(check, 5000);
           return;
         }
