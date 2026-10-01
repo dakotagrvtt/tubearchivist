@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import fcntl
+import json
 import os
+import shlex
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,11 +38,14 @@ class Deployment:
     docker_log: Path
     environment: dict[str, str]
 
-    def run(self, **environment: str) -> subprocess.CompletedProcess:
+    def run(
+        self, cwd: Path | None = None, **environment: str
+    ) -> subprocess.CompletedProcess:
         """Run the deployment script with optional environment overrides."""
         deploy_environment = self.environment | environment
         return subprocess.run(
             [str(SCRIPT)],
+            cwd=cwd,
             check=False,
             capture_output=True,
             env=deploy_environment,
@@ -94,7 +100,8 @@ def deployment(tmp_path: Path) -> Deployment:
     run_command("git", "config", "user.name", "Test User", cwd=publisher)
     run_command("git", "switch", "-c", BRANCH, cwd=publisher)
     (publisher / "source.txt").write_text("initial\n", encoding="utf-8")
-    run_command("git", "add", "source.txt", cwd=publisher)
+    (publisher / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    run_command("git", "add", ".", cwd=publisher)
     run_command("git", "commit", "-m", "initial", cwd=publisher)
     run_command("git", "push", "-u", "origin", BRANCH, cwd=publisher)
 
@@ -113,7 +120,20 @@ def deployment(tmp_path: Path) -> Deployment:
     )
     run_command("git", "config", "user.name", "Test User", cwd=repository)
     compose_file = project / "docker-compose.yml"
-    compose_file.write_text("services: {}\n", encoding="utf-8")
+    compose_file.write_text(
+        json.dumps(
+            {
+                "name": "deployment-test",
+                "services": {
+                    "tubearchivist": {
+                        "build": {"context": str(repository)},
+                        "image": "tubearchivist-local",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
 
     fake_bin.mkdir()
     docker = fake_bin / "docker"
@@ -132,12 +152,57 @@ if [[ "$*" == "compose up --help" ]]; then
     fi
     exit 0
 fi
+if [[ " $* " == *" config "* ]]; then
+    args=("$@")
+    for ((i=0; i<${#args[@]}; i++)); do
+        if [[ "${args[$i]}" == "-f" ]]; then
+            file="${args[$((i+1))]}"
+            [[ -f "$file" ]] || exit 1
+            if [[ " $* " == *" --format json "* ]]; then
+                cat "$file"
+            fi
+            break
+        fi
+    done
+    exit 0
+fi
+if [[ "$*" == "image inspect --format {{.Id}} "* ]]; then
+    printf '%s\\n' 'sha256:built-image'
+    exit 0
+fi
+if [[ "$*" == "image inspect --format "* ]]; then
+    if [[ "${DOCKER_BAD_REVISION:-0}" == "1" ]]; then
+        printf '%s\\n' 'stale-revision'
+    else
+        git -C "$TEST_REPO" rev-parse HEAD
+    fi
+    exit 0
+fi
+if [[ " $* " == *" ps --all --quiet tubearchivist "* ]]; then
+    printf '%s\\n' 'application-container'
+    exit 0
+fi
+if [[ "$*" == "inspect --format {{.Image}} "* ]]; then
+    printf '%s\\n' "${DOCKER_CONTAINER_IMAGE_ID:-sha256:built-image}"
+    exit 0
+fi
 if [[ " $* " == *" up "* ]] && [[ "${DOCKER_UP_FAIL:-0}" == "1" ]]; then
+    exit 1
+fi
+if [[ " $* " == *" build "* ]] && [[ "${DOCKER_BUILD_FAIL:-0}" == "1" ]]; then
     exit 1
 fi
 if [[ " $* " == *" exec -T tubearchivist curl "* ]] \
     && [[ "${DOCKER_API_FAIL:-0}" == "1" ]]; then
     exit 1
+fi
+if [[ " $* " == *" inspect ping "* ]]; then
+    if [[ "${DOCKER_WORKER_HANG:-0}" == "1" ]]; then
+        sleep 30
+    fi
+    if [[ "${DOCKER_WORKER_FAIL:-0}" == "1" ]]; then
+        exit 1
+    fi
 fi
 exit 0
 """,
@@ -159,6 +224,11 @@ exit 0
         "DOCKER_WAIT_SUPPORT",
         "DOCKER_UP_FAIL",
         "DOCKER_API_FAIL",
+        "DOCKER_BUILD_FAIL",
+        "DOCKER_BAD_REVISION",
+        "DOCKER_CONTAINER_IMAGE_ID",
+        "DOCKER_WORKER_FAIL",
+        "DOCKER_WORKER_HANG",
     ):
         environment.pop(variable, None)
     environment.update(
@@ -170,6 +240,7 @@ exit 0
             "BRANCH": BRANCH,
             "REMOTE": "origin",
             "DOCKER_LOG": str(docker_log),
+            "TEST_REPO": str(repository),
         }
     )
     return Deployment(project, repository, publisher, docker_log, environment)
@@ -189,9 +260,11 @@ def test_deploys_exact_remote_commit_with_cached_build(
         for call in calls
         if " up " in f" {call} " and "--help" not in call
     )
-    assert build_call.endswith("build --pull")
+    assert build_call.endswith("build --pull tubearchivist")
     assert "--no-cache" not in build_call
     assert "--wait --wait-timeout 300" in up_call
+    assert "--force-recreate" not in up_call
+    assert "--no-build" in up_call
     assert any(
         "exec -T tubearchivist curl --fail --silent --show-error "
         "--max-time 5 http://localhost:8000/api/health/" in call
@@ -270,7 +343,7 @@ def test_rejects_missing_remote_branch(deployment: Deployment) -> None:
     result = deployment.run(BRANCH="fork/v9.9.9")
 
     assert result.returncode != 0
-    assert "remote branch not found: origin/fork/v9.9.9" in result.stderr
+    assert "unable to fetch origin/fork/v9.9.9" in result.stderr
 
 
 @pytest.mark.parametrize(
@@ -299,7 +372,7 @@ def test_no_cache_build_is_opt_in(deployment: Deployment) -> None:
         call for call in deployment.docker_calls() if " build " in f" {call} "
     )
     assert result.returncode == 0, result.stderr
-    assert build_call.endswith("build --pull --no-cache")
+    assert build_call.endswith("build --pull --no-cache tubearchivist")
 
 
 def test_requires_compose_wait_support(deployment: Deployment) -> None:
@@ -345,3 +418,364 @@ def test_failed_api_probe_reports_service_status(
     assert any(call.endswith("ps") for call in calls)
     assert "Tube Archivist API did not become ready within 1s" in result.stderr
     assert "deployment finished successfully" not in result.stdout
+
+
+@pytest.mark.parametrize("keep_tracking_ref", [False, True])
+def test_fetches_release_despite_restricted_refspec(
+    deployment: Deployment, keep_tracking_ref: bool
+) -> None:
+    """Fetch the requested release even with old single-branch settings."""
+    run_command(
+        "git",
+        "push",
+        "origin",
+        "HEAD:refs/heads/fork/v0.5.11",
+        cwd=deployment.publisher,
+    )
+    run_command(
+        "git",
+        "config",
+        "--replace-all",
+        "remote.origin.fetch",
+        "+refs/heads/fork/v0.5.11:refs/remotes/origin/fork/v0.5.11",
+        cwd=deployment.repository,
+    )
+    if not keep_tracking_ref:
+        run_command(
+            "git",
+            "update-ref",
+            "-d",
+            f"refs/remotes/origin/{BRANCH}",
+            cwd=deployment.repository,
+        )
+    expected = deployment.publish()
+
+    result = deployment.run()
+
+    assert result.returncode == 0, result.stderr
+    actual = run_command(
+        "git", "rev-parse", "HEAD", cwd=deployment.repository
+    ).stdout.strip()
+    assert actual == expected
+
+
+def test_relative_paths_resolve_from_invocation_directory(
+    deployment: Deployment,
+) -> None:
+    """Changing to the checkout must not change Compose path resolution."""
+    result = deployment.run(
+        cwd=deployment.project,
+        PROJECT_DIR=".",
+        REPO_DIR="./tubearchivist",
+        COMPOSE_FILE="./docker-compose.yml",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert any(
+        f"--project-directory {deployment.project} " in call
+        for call in deployment.docker_calls()
+    )
+
+
+def test_upgrades_single_branch_clone(deployment: Deployment) -> None:
+    """Switch to a release missing from both local heads and fetch settings."""
+    old_branch = "fork/v0.5.11"
+    run_command(
+        "git",
+        "push",
+        "origin",
+        f"HEAD:refs/heads/{old_branch}",
+        cwd=deployment.publisher,
+    )
+    run_command("git", "switch", "-c", old_branch, cwd=deployment.repository)
+    run_command("git", "branch", "-D", BRANCH, cwd=deployment.repository)
+    run_command(
+        "git",
+        "update-ref",
+        "-d",
+        f"refs/remotes/origin/{BRANCH}",
+        cwd=deployment.repository,
+    )
+    run_command(
+        "git",
+        "config",
+        "--replace-all",
+        "remote.origin.fetch",
+        f"+refs/heads/{old_branch}:refs/remotes/origin/{old_branch}",
+        cwd=deployment.repository,
+    )
+    expected = deployment.publish()
+
+    result = deployment.run()
+
+    assert result.returncode == 0, result.stderr
+    assert (
+        run_command(
+            "git", "branch", "--show-current", cwd=deployment.repository
+        ).stdout.strip()
+        == BRANCH
+    )
+    assert (
+        run_command(
+            "git", "rev-parse", "HEAD", cwd=deployment.repository
+        ).stdout.strip()
+        == expected
+    )
+
+
+def test_project_directory_can_be_repository(deployment: Deployment) -> None:
+    """The deployment lock must not dirty an otherwise clean checkout."""
+    result = deployment.run(PROJECT_DIR=str(deployment.repository))
+
+    assert result.returncode == 0, result.stderr
+    assert not run_command(
+        "git", "status", "--porcelain", cwd=deployment.repository
+    ).stdout
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        None,
+        {"context": "/wrong/checkout"},
+        {"dockerfile": "other.Dockerfile"},
+        {"dockerfile_inline": "FROM scratch"},
+        {"target": "node-builder"},
+    ],
+)
+def test_rejects_application_without_checkout_build(
+    deployment: Deployment, build: dict | None
+) -> None:
+    """An image-only or unrelated build cannot represent the release."""
+    compose_file = deployment.project / "docker-compose.yml"
+    config = json.loads(compose_file.read_text())
+    app = config["services"]["tubearchivist"]
+    if build is None:
+        app.pop("build")
+    else:
+        app["build"].update(build)
+    compose_file.write_text(json.dumps(config))
+
+    result = deployment.run()
+
+    assert result.returncode != 0
+    assert "build" in result.stderr
+    assert not any(" build " in f" {c} " for c in deployment.docker_calls())
+
+
+@pytest.mark.parametrize("target", ["/app", "/app/run.sh", "/"])
+def test_rejects_mounts_over_application_code(
+    deployment: Deployment, target: str
+) -> None:
+    """Mounts must not replace the application after image verification."""
+    compose_file = deployment.project / "docker-compose.yml"
+    config = json.loads(compose_file.read_text())
+    config["services"]["tubearchivist"]["volumes"] = [
+        {"type": "bind", "source": "/old/code", "target": target}
+    ]
+    compose_file.write_text(json.dumps(config))
+
+    result = deployment.run()
+
+    assert result.returncode != 0
+    assert "mount" in result.stderr
+    assert not any(" build " in f" {c} " for c in deployment.docker_calls())
+
+
+def test_rejects_image_with_wrong_revision(deployment: Deployment) -> None:
+    """An incorrectly labelled build must fail before changing containers."""
+    result = deployment.run(DOCKER_BAD_REVISION="1")
+
+    assert result.returncode != 0
+    assert "revision" in result.stderr
+    assert not any(" up -d " in c for c in deployment.docker_calls())
+
+
+def test_rejects_running_image_mismatch(deployment: Deployment) -> None:
+    """A healthy but different image cannot produce a success report."""
+    result = deployment.run(DOCKER_CONTAINER_IMAGE_ID="sha256:old-image")
+
+    assert result.returncode != 0
+    assert "running image" in result.stderr
+    assert "deployment finished successfully" not in result.stdout
+
+
+def test_checks_worker_in_deployed_container(deployment: Deployment) -> None:
+    """Another worker sharing Redis must not satisfy this container's check."""
+    result = deployment.run()
+
+    assert result.returncode == 0, result.stderr
+    calls = deployment.docker_calls()
+    worker_call = next(c for c in calls if "inspect ping" in c)
+    assert '--destination "celery@$(hostname)"' in worker_call
+
+
+@pytest.mark.parametrize(
+    "failure", ["DOCKER_WORKER_FAIL", "DOCKER_WORKER_HANG"]
+)
+def test_worker_failure_is_bounded_and_reports_status(
+    deployment: Deployment, failure: str
+) -> None:
+    """An unavailable or hanging worker probe cannot report success."""
+    result = deployment.run(WAIT_TIMEOUT="2", **{failure: "1"})
+
+    assert result.returncode != 0
+    assert "Celery worker" in result.stderr
+    assert any(c.endswith("ps") for c in deployment.docker_calls())
+    assert "deployment finished successfully" not in result.stdout
+
+
+@pytest.mark.parametrize("build_failure", ["0", "1"])
+def test_override_is_cleaned_without_changing_server_compose(
+    deployment: Deployment, build_failure: str
+) -> None:
+    """Success and build failure both remove the temporary image override."""
+    compose_file = deployment.project / "docker-compose.yml"
+    original = compose_file.read_bytes()
+
+    result = deployment.run(DOCKER_BUILD_FAIL=build_failure)
+
+    assert (result.returncode != 0) == (build_failure == "1")
+    build_call = next(
+        c for c in deployment.docker_calls() if " build " in f" {c} "
+    )
+    arguments = shlex.split(build_call)
+    files = [
+        arguments[i + 1] for i, arg in enumerate(arguments) if arg == "-f"
+    ]
+    assert len(files) == 2
+    assert not Path(files[1]).exists()
+    assert compose_file.read_bytes() == original
+    if build_failure == "1":
+        assert not any(" up -d " in c for c in deployment.docker_calls())
+
+
+def test_release_override_with_real_compose(tmp_path: Path) -> None:
+    """Pin the release build while preserving the server's Compose settings."""
+    docker = shutil.which("docker")
+    if not docker:
+        pytest.skip("Docker Compose CLI is not installed")
+    version = subprocess.run(
+        [docker, "compose", "version"], capture_output=True, check=False
+    )
+    if version.returncode:
+        pytest.skip("Docker Compose plugin is not installed")
+    repository = tmp_path / "checkout"
+    repository.mkdir()
+    (repository / "Dockerfile").write_text("FROM scratch\n")
+    config = {
+        "name": "contract-test",
+        "services": {
+            "tubearchivist": {
+                "build": {
+                    "context": "./checkout",
+                    "args": {"INSTALL_DEBUG": "1"},
+                },
+                "image": "original-image",
+                "pull_policy": "always",
+                "environment": {"TEST_LITERAL": "a$$b"},
+                "volumes": ["media:/youtube", "cache:/cache"],
+                "ports": ["127.0.0.1:8000:8000"],
+            },
+            "redis": {"image": "redis:7"},
+        },
+        "volumes": {"media": {}, "cache": {}},
+    }
+    compose_file = tmp_path / "compose.json"
+    compose_file.write_text(json.dumps(config))
+    base_args = [
+        docker,
+        "compose",
+        "--project-directory",
+        str(tmp_path),
+        "-f",
+        str(compose_file),
+    ]
+    resolved = run_command(
+        *base_args, "config", "--format", "json", cwd=tmp_path
+    ).stdout
+    override = tmp_path / "release.json"
+    revision = "a" * 40
+    helper = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT.parent / "deploy_config.py"),
+            str(repository),
+            revision,
+            str(override),
+        ],
+        input=resolved,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert helper.returncode == 0, helper.stderr
+    merged = json.loads(
+        run_command(
+            *base_args,
+            "-f",
+            override,
+            "config",
+            "--format",
+            "json",
+            cwd=tmp_path,
+        ).stdout
+    )
+    application = merged["services"]["tubearchivist"]
+    original = json.loads(resolved)
+    assert (
+        application["image"]
+        == f"tubearchivist-deploy-contract-test:{revision}"
+    )
+    assert helper.stdout.strip() == application["image"]
+    assert application["pull_policy"] == "never"
+    assert application["build"]["context"] == str(repository)
+    assert (
+        application["build"]["labels"]["org.opencontainers.image.revision"]
+        == revision
+    )
+    assert application["build"]["args"] == {"INSTALL_DEBUG": "1"}
+    for field in ("environment", "volumes", "ports"):
+        assert (
+            application[field] == original["services"]["tubearchivist"][field]
+        )
+    assert merged["services"]["redis"] == original["services"]["redis"]
+    assert merged["volumes"] == original["volumes"]
+
+
+def test_branch_switch_can_remove_deployment_helpers(
+    deployment: Deployment,
+) -> None:
+    """Keep the running script and helper paired when switching releases."""
+    old_branch = "fork/v0.5.11"
+    run_command(
+        "git",
+        "push",
+        "origin",
+        f"HEAD:refs/heads/{old_branch}",
+        cwd=deployment.publisher,
+    )
+    scripts = deployment.publisher / "scripts"
+    scripts.mkdir()
+    shutil.copy2(SCRIPT, scripts / SCRIPT.name)
+    shutil.copy2(
+        SCRIPT.parent / "deploy_config.py", scripts / "deploy_config.py"
+    )
+    run_command("git", "add", "scripts", cwd=deployment.publisher)
+    deployment.publish()
+    run_command("git", "pull", "--ff-only", cwd=deployment.repository)
+
+    result = subprocess.run(
+        [str(deployment.repository / "scripts" / SCRIPT.name)],
+        env=deployment.environment | {"BRANCH": old_branch},
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not (deployment.repository / "scripts/deploy_config.py").exists()
+    assert (
+        f"deployment finished successfully at {old_branch}@" in result.stdout
+    )

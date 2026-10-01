@@ -22,6 +22,7 @@ BRANCH="${BRANCH:-fork/v0.5.12}"
 REMOTE="${REMOTE:-origin}"
 NO_CACHE="${NO_CACHE:-0}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-300}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 
 log() {
     printf '\n[%s] %s\n' "deploy-server" "$*"
@@ -43,10 +44,7 @@ require_command() {
 }
 
 compose() {
-    docker compose \
-        --project-directory "$PROJECT_DIR" \
-        -f "$COMPOSE_FILE" \
-        "$@"
+    docker compose "${COMPOSE_ARGS[@]}" "$@"
 }
 
 report_startup_failure() {
@@ -57,9 +55,42 @@ report_startup_failure() {
     fail "$message"
 }
 
+wait_for_probe() {
+    local description="$1"
+    shift
+    local remaining probe_timeout
+
+    log "verifying $description"
+    while true; do
+        remaining=$((READINESS_DEADLINE - SECONDS))
+        if ((remaining <= 0)); then
+            report_startup_failure \
+                "$description did not become ready within ${WAIT_TIMEOUT}s"
+        fi
+        probe_timeout=10
+        if ((remaining < probe_timeout)); then
+            probe_timeout="$remaining"
+        fi
+        if timeout --kill-after=1 "${probe_timeout}s" \
+            docker compose "${COMPOSE_ARGS[@]}" exec -T tubearchivist \
+            "$@" >/dev/null; then
+            return
+        fi
+        remaining=$((READINESS_DEADLINE - SECONDS))
+        if ((remaining > 2)); then
+            sleep 2
+        elif ((remaining > 0)); then
+            sleep "$remaining"
+        fi
+    done
+}
+
 require_command git
 require_command docker
 require_command flock
+require_command realpath
+require_command python3
+require_command timeout
 
 if [[ -n "${ALLOW_DIRTY:-}" ]]; then
     fail "ALLOW_DIRTY is no longer supported; deployments require a clean working tree"
@@ -85,12 +116,28 @@ require_path "$PROJECT_DIR" "project directory"
 require_path "$REPO_DIR" "repository directory"
 require_path "$COMPOSE_FILE" "compose file"
 require_path "$REPO_DIR/.git" "git repository metadata"
+require_path "$SCRIPT_DIR/deploy_config.py" "deployment config helper"
+
+PROJECT_DIR="$(realpath -e -- "$PROJECT_DIR")"
+REPO_DIR="$(realpath -e -- "$REPO_DIR")"
+COMPOSE_FILE="$(realpath -e -- "$COMPOSE_FILE")"
+COMPOSE_ARGS=(--project-directory "$PROJECT_DIR" -f "$COMPOSE_FILE")
 
 LOCK_FILE="${PROJECT_DIR}/.deploy-server.lock"
+case "$PROJECT_DIR/" in
+    "$REPO_DIR/"*)
+        LOCK_FILE="$(git -C "$REPO_DIR" rev-parse --absolute-git-dir)/deploy-server.lock"
+        ;;
+esac
 if ! exec 9>"$LOCK_FILE"; then
     fail "unable to open deployment lock: $LOCK_FILE"
 fi
 flock -n 9 || fail "another deployment is already running for $PROJECT_DIR"
+
+# Preserve this script's helper across a fetch or switch to an older release.
+DEPLOY_TMP="$(mktemp -d)"
+trap 'rm -rf -- "$DEPLOY_TMP"' EXIT
+cp -- "$SCRIPT_DIR/deploy_config.py" "$DEPLOY_TMP/deploy_config.py"
 
 cd "$REPO_DIR"
 
@@ -104,9 +151,10 @@ if [[ -n "$(git status --porcelain)" ]]; then
 fi
 
 log "fetching latest refs from $REMOTE"
-git fetch "$REMOTE" --prune
-
 REMOTE_REF="refs/remotes/${REMOTE}/${BRANCH}"
+if ! git fetch --no-tags "$REMOTE" "+refs/heads/${BRANCH}:${REMOTE_REF}"; then
+    fail "unable to fetch ${REMOTE}/${BRANCH}; check remote access and branch name"
+fi
 if ! git show-ref --verify --quiet "$REMOTE_REF"; then
     fail "remote branch not found: ${REMOTE}/${BRANCH}"
 fi
@@ -117,7 +165,9 @@ if [[ "$CURRENT_BRANCH" != "$BRANCH" ]]; then
     if git show-ref --verify --quiet "refs/heads/${BRANCH}"; then
         git switch "$BRANCH"
     else
-        git switch --track -c "$BRANCH" "${REMOTE}/${BRANCH}"
+        # A restricted remote fetch refspec may not recognize this ref as
+        # a tracking branch. Every deployment fetches it explicitly anyway.
+        git switch --no-track -c "$BRANCH" "$REMOTE_REF"
     fi
 fi
 
@@ -137,10 +187,15 @@ LOCAL_COMMIT="$(git rev-parse HEAD)"
 [[ "$LOCAL_COMMIT" == "$REMOTE_COMMIT" ]] \
     || fail "local HEAD does not match ${REMOTE}/${BRANCH} after update"
 
-DEPLOY_COMMIT="$(git rev-parse --short HEAD)"
+DEPLOY_COMMIT="$LOCAL_COMMIT"
 log "deploying commit $DEPLOY_COMMIT with compose file $COMPOSE_FILE"
 
 log "validating compose file"
+compose config --quiet
+OVERRIDE_FILE="${DEPLOY_TMP}/release.json"
+DEPLOY_IMAGE="$(compose config --format json | python3 \
+    "$DEPLOY_TMP/deploy_config.py" "$REPO_DIR" "$DEPLOY_COMMIT" "$OVERRIDE_FILE")"
+COMPOSE_ARGS+=(-f "$OVERRIDE_FILE")
 compose config --quiet
 
 BUILD_ARGS=(build --pull)
@@ -150,48 +205,35 @@ if [[ "$NO_CACHE" == "1" ]]; then
 else
     log "building Docker images with cache"
 fi
-compose "${BUILD_ARGS[@]}"
+compose "${BUILD_ARGS[@]}" tubearchivist
+
+BUILT_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$DEPLOY_IMAGE")"
+BUILT_REVISION="$(docker image inspect \
+    --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+    "$DEPLOY_IMAGE")"
+[[ -n "$BUILT_IMAGE_ID" && "$BUILT_REVISION" == "$DEPLOY_COMMIT" ]] \
+    || fail "built image revision does not match $DEPLOY_COMMIT"
 
 log "starting containers and waiting up to ${WAIT_TIMEOUT}s for health"
 READINESS_DEADLINE=$((SECONDS + WAIT_TIMEOUT))
-if ! compose up -d --force-recreate --remove-orphans \
+if ! compose up -d --no-build --remove-orphans \
     --wait --wait-timeout "$WAIT_TIMEOUT"; then
     report_startup_failure \
         "containers did not become ready within ${WAIT_TIMEOUT}s"
 fi
 
-log "verifying the Tube Archivist API"
-API_HEALTH_URL="http://localhost:8000/api/health/"
-while true; do
-    REMAINING_TIME=$((READINESS_DEADLINE - SECONDS))
-    if ((REMAINING_TIME <= 0)); then
-        report_startup_failure \
-            "Tube Archivist API did not become ready within ${WAIT_TIMEOUT}s"
-    fi
+CONTAINER_ID="$(compose ps --all --quiet tubearchivist)"
+[[ -n "$CONTAINER_ID" && "$CONTAINER_ID" != *$'\n'* ]] \
+    || report_startup_failure "expected exactly one Tube Archivist container"
+RUNNING_IMAGE_ID="$(docker inspect --format '{{.Image}}' "$CONTAINER_ID")"
+[[ "$RUNNING_IMAGE_ID" == "$BUILT_IMAGE_ID" ]] \
+    || report_startup_failure "running image does not match the built release image"
 
-    CURL_TIMEOUT=5
-    if ((REMAINING_TIME < CURL_TIMEOUT)); then
-        CURL_TIMEOUT="$REMAINING_TIME"
-    fi
-
-    if compose exec -T tubearchivist curl --fail --silent --show-error \
-        --max-time "$CURL_TIMEOUT" "$API_HEALTH_URL" >/dev/null; then
-        break
-    fi
-
-    REMAINING_TIME=$((READINESS_DEADLINE - SECONDS))
-    if ((REMAINING_TIME <= 0)); then
-        report_startup_failure \
-            "Tube Archivist API did not become ready within ${WAIT_TIMEOUT}s"
-    fi
-
-    if ((REMAINING_TIME > 2)); then
-        sleep 2
-    else
-        sleep "$REMAINING_TIME"
-    fi
-done
+wait_for_probe "Tube Archivist API" curl --fail --silent --show-error \
+    --max-time 5 "http://localhost:8000/api/health/"
+wait_for_probe "Celery worker" sh -c \
+    'exec celery -A task.celery inspect ping --timeout 2 --destination "celery@$(hostname)"'
 
 compose ps
 
-log "deployment finished successfully at ${BRANCH}@${DEPLOY_COMMIT}"
+log "deployment finished successfully at ${BRANCH}@${DEPLOY_COMMIT} (${BUILT_IMAGE_ID})"
