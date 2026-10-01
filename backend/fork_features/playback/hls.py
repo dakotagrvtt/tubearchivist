@@ -15,6 +15,7 @@ from fork_features.playback.media_paths import safe_path
 from fork_features.playback.startup import cleanup_hls_cache
 from fork_features.playback.tasks import (
     PLAYBACK_LOCK_TTL,
+    _finish_publication,
     _release_playback_lock,
     _renew_playback_lock,
     _run_ffmpeg_with_lease,
@@ -270,6 +271,7 @@ def _prepare_locked_hls(
             )
             return "failed"
 
+        staged_stat = os.stat(temporary_dir)
         shutil.rmtree(output_dir, ignore_errors=True)
         os.replace(temporary_dir, output_dir)
         cleanup_hls_cache()
@@ -285,7 +287,16 @@ def _prepare_locked_hls(
             return "failed"
 
         _set_status(redis, video_id, {"status": "ready"})
-        return "ready"
+        return _finish_publication(
+            redis,
+            lock_key,
+            hls_status_key(video_id),
+            lock_token,
+            output_dir,
+            staged_stat,
+            source_path,
+            source_stat,
+        )
     except (OSError, ValueError) as error:
         if not _renew_playback_lock(
             redis, lock_key, hls_status_key(video_id), lock_token

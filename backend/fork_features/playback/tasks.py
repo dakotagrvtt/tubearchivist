@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import shutil
 import subprocess
 
 from appsettings.src.config import AppConfig
@@ -84,15 +85,10 @@ def _output_ready(path: str) -> bool:
         return False
 
 
-def _renew_playback_lock(
-    redis: RedisArchivist,
-    lock_key: str,
-    status_key: str,
-    lock_token: str,
-) -> bool:
-    """Renew the lease only while this worker still owns it."""
+def _renew_lock(redis: RedisArchivist, lock_key: str, lock_token: str) -> bool:
+    """Renew ownership without changing a possibly invalidated status."""
     try:
-        renewed = bool(
+        return bool(
             redis.conn.eval(
                 RENEW_LOCK_SCRIPT,
                 1,
@@ -104,6 +100,15 @@ def _renew_playback_lock(
     except Exception:  # pragma: no cover - redis connection boundary
         return False
 
+
+def _renew_playback_lock(
+    redis: RedisArchivist,
+    lock_key: str,
+    status_key: str,
+    lock_token: str,
+) -> bool:
+    """Renew the lease only while this worker still owns it."""
+    renewed = _renew_lock(redis, lock_key, lock_token)
     if renewed:
         try:
             redis.set_message(
@@ -130,6 +135,45 @@ def _release_playback_lock(
         )
     except Exception:  # pragma: no cover - redis connection boundary
         pass
+
+
+def _finish_publication(
+    redis: RedisArchivist,
+    lock_key: str,
+    status_key: str,
+    lock_token: str,
+    output_path: str,
+    staged_stat: os.stat_result,
+    source_path: str,
+    source_stat: os.stat_result,
+) -> str:
+    """Validate publication and undo stale output while still its owner."""
+    if not _source_changed(source_path, source_stat):
+        return "ready"
+    # Renew without a preparing-status write: the status may belong to a
+    # successor, or invalidation may already have removed it.
+    if not _renew_lock(redis, lock_key, lock_token):
+        return "lock-lost"
+
+    try:
+        published_stat = os.stat(output_path)
+    except FileNotFoundError:
+        published_stat = None
+    if published_stat and not os.path.samestat(staged_stat, published_stat):
+        return "lock-lost"
+
+    try:
+        remove_output = (
+            shutil.rmtree if os.path.isdir(output_path) else _remove_file
+        )
+        remove_output(output_path)
+    except OSError as error:
+        print(f"{status_key}: failed to remove stale publication: {error}")
+    try:
+        redis.del_message(status_key)
+    except Exception as error:  # pragma: no cover - Redis boundary
+        print(f"{status_key}: failed to clear stale playback status: {error}")
+    return "stale-source"
 
 
 def _stop_process(process: subprocess.Popen) -> None:
@@ -272,9 +316,21 @@ def prepare_playback(video_id: str, media_url: str) -> str:  # noqa: C901
             )
             return "failed"
 
+        staged_stat = os.stat(temporary_path)
         os.replace(temporary_path, cache_path)
         redis.set_message(status_key, {"status": "ready"}, expire=86400)
-        return "ready"
+        # Include the ready write in the source check: deletion may have
+        # removed both the output and status immediately before that write.
+        return _finish_publication(
+            redis,
+            lock_key,
+            status_key,
+            lock_token,
+            cache_path,
+            staged_stat,
+            source_path,
+            source_stat,
+        )
     except (OSError, ValueError) as error:
         if temporary_path:
             _remove_file(temporary_path)
