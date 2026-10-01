@@ -10,9 +10,8 @@ from pathlib import Path
 
 import pytest
 
-
 SCRIPT = Path(__file__).parents[1] / "deploy-server.sh"
-BRANCH = "fork/v0.5.11"
+BRANCH = "fork/v0.5.12"
 
 
 def run_command(*args: str | Path, cwd: Path) -> subprocess.CompletedProcess:
@@ -89,7 +88,9 @@ def deployment(tmp_path: Path) -> Deployment:
     origin.mkdir()
     run_command("git", "init", "--bare", cwd=origin)
     run_command("git", "clone", str(origin), str(publisher), cwd=tmp_path)
-    run_command("git", "config", "user.email", "test@example.com", cwd=publisher)
+    run_command(
+        "git", "config", "user.email", "test@example.com", cwd=publisher
+    )
     run_command("git", "config", "user.name", "Test User", cwd=publisher)
     run_command("git", "switch", "-c", BRANCH, cwd=publisher)
     (publisher / "source.txt").write_text("initial\n", encoding="utf-8")
@@ -199,6 +200,18 @@ def test_deploys_exact_remote_commit_with_cached_build(
     assert f"deployment finished successfully at {BRANCH}@" in result.stdout
 
 
+def test_default_branch_deploys_current_release(
+    deployment: Deployment,
+) -> None:
+    """An invocation without BRANCH uses the current stable release."""
+    deployment.environment.pop("BRANCH")
+
+    result = deployment.run()
+
+    assert result.returncode == 0, result.stderr
+    assert f"deployment finished successfully at {BRANCH}@" in result.stdout
+
+
 def test_fast_forwards_branch_to_remote(deployment: Deployment) -> None:
     """A checkout behind its remote is updated before the build."""
     expected_commit = deployment.publish()
@@ -215,13 +228,17 @@ def test_fast_forwards_branch_to_remote(deployment: Deployment) -> None:
 
 def test_rejects_dirty_checkout(deployment: Deployment) -> None:
     """Uncommitted changes cannot become part of a deployment."""
-    (deployment.repository / "source.txt").write_text("dirty\n", encoding="utf-8")
+    (deployment.repository / "source.txt").write_text(
+        "dirty\n", encoding="utf-8"
+    )
 
     result = deployment.run()
 
     assert result.returncode != 0
     assert "working tree is dirty" in result.stderr
-    assert not any(" build " in f" {call} " for call in deployment.docker_calls())
+    assert not any(
+        " build " in f" {call} " for call in deployment.docker_calls()
+    )
 
 
 def test_rejects_local_ahead_branch(deployment: Deployment) -> None:
@@ -232,7 +249,9 @@ def test_rejects_local_ahead_branch(deployment: Deployment) -> None:
 
     assert result.returncode != 0
     assert "ahead of or diverged" in result.stderr
-    assert not any(" build " in f" {call} " for call in deployment.docker_calls())
+    assert not any(
+        " build " in f" {call} " for call in deployment.docker_calls()
+    )
 
 
 def test_rejects_diverged_branch(deployment: Deployment) -> None:
@@ -315,7 +334,9 @@ def test_failed_health_wait_reports_service_status(
     assert "deployment finished successfully" not in result.stdout
 
 
-def test_failed_api_probe_reports_service_status(deployment: Deployment) -> None:
+def test_failed_api_probe_reports_service_status(
+    deployment: Deployment,
+) -> None:
     """A responsive Nginx cannot hide an unavailable Django API."""
     result = deployment.run(DOCKER_API_FAIL="1", WAIT_TIMEOUT="1")
 

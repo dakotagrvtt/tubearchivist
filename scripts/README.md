@@ -17,7 +17,7 @@ Default behavior:
 
 1. verify the repo and compose paths exist
 2. take an exclusive deployment lock for the project directory
-3. fetch `fork/v0.5.11` from `origin` and require a clean checkout that can be
+3. fetch `fork/v0.5.12` from `origin` and require a clean checkout that can be
    fast-forwarded to the exact remote commit
 4. validate the external Compose file
 5. build the application image with `--pull` and the Docker build cache
@@ -48,7 +48,7 @@ Example:
 Override defaults with environment variables:
 
 ```bash
-BRANCH=fork/v0.5.11 \
+BRANCH=fork/v0.5.12 \
 PROJECT_DIR=/zpool-8TB/containers/tubearchivist \
 REPO_DIR=/zpool-8TB/containers/tubearchivist/tubearchivist \
 COMPOSE_FILE=/zpool-8TB/containers/tubearchivist/docker-compose.yml \
