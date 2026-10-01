@@ -4,6 +4,9 @@ The fork is maintained from `origin/fork/main`, which is based on the
 upstream project and contains the fork integration. Stable deployments use a
 versioned `fork/vX.Y.Z` branch cut after testing.
 
+The current deployment baseline is `fork/v0.5.12`. The deployment script
+defaults to this branch. `fork/v0.5.11` remains available for rollback.
+
 ## Branch roles
 
 - `fork/main`: rolling integration branch; merge upstream releases and land
